@@ -1,0 +1,2134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+*************************************************
+	         AnyLogic Project File 
+*************************************************	         
+-->
+<AnyLogicWorkspace WorkspaceVersion="1.9" AnyLogicVersion="8.8.1.202210270952" AlpVersion="8.7.7">
+<Model>
+	<Id>1665787765893</Id>
+	<Name><![CDATA[AnyLogic Jsonifier Library]]></Name>
+	<Description><![CDATA[A simple library for enabling AnyLogic objects to be JSON serializable. 
+After creating an instance of it, use the provided "toJson" and "fromJson" functions.
+It also includes a filter for some customization into what is included when calling "toJson".]]></Description>
+	<EngineVersion>6</EngineVersion>
+	<JavaPackageName><![CDATA[anylogic_jsonifier_library]]></JavaPackageName>
+	<ModelTimeUnit><![CDATA[Second]]></ModelTimeUnit>
+	<ActiveObjectClasses>
+		<!--   =========   Active Object Class   ========  -->
+		<ActiveObjectClass>
+			<Id>1665787765899</Id>
+			<Name><![CDATA[ALJsonifier]]></Name>
+			<AdditionalClassCode><![CDATA[{
+// initialize the filter here to allow for functionality when this obj is created without a constructor / as a POJO
+jsonFilter = new JsonFilter(objmapper, true);
+}
+
+/**
+* Initialize the class when called within an AL scope (e.g., as a variable object).
+* @param anyAgent An agent that is already registered with the AL Engine; can be the Java keyword 'this' if calling this constructor from an agent.
+*/
+public ALJsonifier(Agent anyAgent) {
+	// TODO not sure if this is needed (check what functionality is lost from just using the empty constructor).
+	this.createAndStart(anyAgent);
+}
+
+private enum ObjectAgentType {
+	JAVA, // pure java type
+	AGENT_SINGLE, // single agent
+	AGENT_POPULATION, // anylogic-population (of agents)
+	AGENT_COLLECTION // java collection with agent-typed components
+}
+
+/**
+Needed because the default serializer cuts off with a certain limit.
+E.g., "plainDataTable" : [ [ 0.0, 5.0 ], [ 1.0, 5.0 ], [ 2.0, 5.0 ], ..., [ 999.0, 4.0 ], [ "... 1361 more items" ] ],
+**/
+static HashMap<String, Object> serializeDataSet(DataSet ds) {
+	HashMap<String, Object> dataTable = new HashMap<>();
+	dataTable.put("xmin", ds.getXMin());
+	dataTable.put("xmean", ds.getXMean());
+	dataTable.put("xmedian", ds.getXMedian());
+	dataTable.put("xmax", ds.getXMax());
+	dataTable.put("ymin", ds.getYMin());
+	dataTable.put("ymean", ds.getYMean());
+	dataTable.put("ymedian", ds.getYMedian());
+	dataTable.put("ymax", ds.getYMax());
+	dataTable.put("version", ds.getVersion());
+	List<double[]> values = new ArrayList<>();
+	IntStream.range(0, ds.size()).forEach(i -> values.add(new double[]{ds.getX(i), ds.getY(i)}));
+	dataTable.put("plainDataTable", values);
+	return dataTable;
+}
+
+
+static HashMap<String, Object> serializeHistogram1DData(HistogramData h1data) {
+	HashMap<String, Object> dataTable = new HashMap<>();
+
+	int count = h1data.count();
+	dataTable.put("count", count);
+	// Follow similar structure as in ALCloud: User can derive ranges based on min X and interval width
+	dataTable.put("lowerBound", h1data.getXMin());
+	dataTable.put("intervalWidth", h1data.getIntervalWidth());
+	int[] hits = IntStream.range(0, h1data.getNumberOfIntervals())
+			.map(i -> Math.round((float)h1data.getPDF(i)*count)).toArray();
+	dataTable.put("hits", hits);
+	// HSimpleData = User set explicit min/max. There may be data outside this range, so add counts of lower/upper range of interval
+	if (h1data instanceof HistogramSimpleData) {
+		HistogramSimpleData hdataSimple = (HistogramSimpleData) h1data;
+		dataTable.put("hitsOutLow", Math.round((float)hdataSimple.getPDFOutsideLow()*count));
+		dataTable.put("hitsOutHigh", Math.round((float)hdataSimple.getPDFOutsideHigh()*count));
+	}
+	// Add in other useful stats available from histogram
+	HashMap<String, Double> dtableStats = new HashMap<>();
+	dtableStats.put("min", h1data.min());
+	dtableStats.put("max", h1data.max());
+	dtableStats.put("mean", h1data.mean());
+	dtableStats.put("deviation", h1data.deviation());
+	dataTable.put("statistics", dtableStats);
+	
+	return dataTable;
+	
+}
+
+static HashMap<String, Object> serializeHistogram2DData(Histogram2DData h2data) {
+	HashMap<String, Object> dataTable = new HashMap<>();
+
+	// Follow similar structure as in ALCloud; user can derive interval size, etc. from available data
+	int nX = h2data.getNumberOfXIntervals();
+	int nY = h2data.getNumberOfYIntervals();
+	int[][] hits = new int[nY][nX];
+	int[] hitsOutLow = new int[nX];
+	int[] hitsOutHigh = new int[nX];
+	for (int x = 0; x < nX; x++) {
+		int xcount = h2data.count(x);
+		hitsOutLow[x] = Math.round((float)h2data.getPDFOutsideLow(x)*xcount);
+		hitsOutHigh[x] = Math.round((float)h2data.getPDFOutsideHigh(x)*xcount);
+		for (int y = 0; y < nY; y++) {
+			hits[y][x] = Math.round((float)h2data.getPDF(x, y)*xcount);
+		}
+	}
+	dataTable.put("hits", hits);
+	dataTable.put("hitsOutLow", hitsOutLow);
+	dataTable.put("hitsOutHigh", hitsOutHigh);
+	dataTable.put("xMin", h2data.getXMin());
+	dataTable.put("xMax", h2data.getXMax());
+	dataTable.put("yMin", h2data.getYMin());
+	dataTable.put("yMax", h2data.getYMax());
+	return dataTable;
+}
+
+static HashMap<String, Object> serializeStatisticsDiscrete(StatisticsDiscrete stat) {
+	String[] statRows = stat.toString().split("\n");
+	HashMap<String, Object> statMap = new HashMap<>();
+	Arrays.stream(statRows)
+		.map(s -> s.strip().split("\t"))
+		.forEach(s -> statMap.put(s[0], Double.valueOf(s[1].replaceAll(",", ""))));
+	return statMap;
+}
+
+static HashMap<String, Object> serializeStatisticsContinuous(StatisticsContinuous stat) {
+	String[] statRows = stat.toString().split("\n");
+	HashMap<String, Object> statMap = new HashMap<>();
+	Arrays.stream(statRows)
+		.map(s -> s.strip().split("\t"))
+		.forEach(s -> statMap.put(s[0], Double.valueOf(s[1].replaceAll(",", ""))));
+	return statMap;
+}
+
+static HashMap<String, Object> serializeHistogramApperance(Histogram.Appearance app) {
+	HashMap<String, Object> appMap = new HashMap<>();
+	appMap.put("string", app.toString());
+	return appMap;
+}
+]]></AdditionalClassCode>
+			<ClientAreaTopLeft><X>0</X><Y>0</Y></ClientAreaTopLeft>
+			<Import><![CDATA[import java.io.IOException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Modifier;
+import java.util.stream.IntStream;
+import java.lang.reflect.Field;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import java.io.FileWriter;
+import java.io.FileNotFoundException;
+import java.io.File;
+import java.util.Scanner;
+import java.io.FileReader;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.InvalidPathException;]]></Import>
+			<Generic>false</Generic>
+			<GenericParameter>
+				<Id>1665787765897</Id>
+				<Name><![CDATA[1665787765897]]></Name>
+				<GenericParameterValue Class="CodeValue">
+					<Code><![CDATA[T extends Agent]]></Code>
+				</GenericParameterValue>
+				<GenericParameterLabel><![CDATA[Generic parameter:]]></GenericParameterLabel>
+			</GenericParameter>
+			<FlowchartBlock>true</FlowchartBlock>
+			<FlowChartsUsage>ENTITY</FlowChartsUsage>
+			<SamplesToKeep>100</SamplesToKeep>
+			<LimitNumberOfArrayElements>false</LimitNumberOfArrayElements>
+			<ElementsLimitValue>100</ElementsLimitValue>
+			<MakeDefaultViewArea>false</MakeDefaultViewArea>
+			<SceneGridColor/>
+			<SceneBackgroundColor/>
+			<SceneSkybox>null</SceneSkybox>
+			<AgentProperties>
+	 			<SpaceType>CONTINUOUS</SpaceType>			
+				<EnvironmentDefinesInitialLocation>true</EnvironmentDefinesInitialLocation>
+				<RotateAnimationTowardsMovement>true</RotateAnimationTowardsMovement>
+				<RotateAnimationVertically>false</RotateAnimationVertically>
+				<VelocityCode Class="CodeUnitValue">
+					<Code><![CDATA[10]]></Code>
+					<Unit Class="SpeedUnits"><![CDATA[MPS]]></Unit>
+				</VelocityCode>
+				<PhysicalLength Class="CodeUnitValue">
+					<Code><![CDATA[1]]></Code>
+					<Unit Class="LengthUnits"><![CDATA[METER]]></Unit>
+				</PhysicalLength>
+				<PhysicalWidth Class="CodeUnitValue">
+					<Code><![CDATA[1]]></Code>
+					<Unit Class="LengthUnits"><![CDATA[METER]]></Unit>
+				</PhysicalWidth>
+				<PhysicalHeight Class="CodeUnitValue">
+					<Code><![CDATA[1]]></Code>
+					<Unit Class="LengthUnits"><![CDATA[METER]]></Unit>
+				</PhysicalHeight>
+			</AgentProperties>
+			<EnvironmentProperties>
+					<EnableSteps>false</EnableSteps>
+					<StepDurationCode Class="CodeUnitValue">
+						<Code><![CDATA[1.0]]></Code>
+						<Unit Class="TimeUnits"><![CDATA[SECOND]]></Unit>
+					</StepDurationCode>
+					<SpaceType>CONTINUOUS</SpaceType>
+					<WidthCode><![CDATA[500]]></WidthCode>
+					<HeightCode><![CDATA[500]]></HeightCode>
+					<ZHeightCode><![CDATA[0]]></ZHeightCode>
+					<ColumnsCountCode><![CDATA[100]]></ColumnsCountCode>
+					<RowsCountCode><![CDATA[100]]></RowsCountCode>
+					<NeigborhoodType>MOORE</NeigborhoodType>
+					<LayoutType>USER_DEF</LayoutType>
+					<LayoutTypeApplyOnStartup>true</LayoutTypeApplyOnStartup>
+					<NetworkType>USER_DEF</NetworkType>
+					<NetworkTypeApplyOnStartup>true</NetworkTypeApplyOnStartup>
+					<ConnectionsPerAgentCode><![CDATA[2]]></ConnectionsPerAgentCode>
+					<ConnectionsRangeCode><![CDATA[50]]></ConnectionsRangeCode>
+					<NeighborLinkFractionCode><![CDATA[0.95]]></NeighborLinkFractionCode>
+					<MCode><![CDATA[10]]></MCode>
+			</EnvironmentProperties>
+			<DatasetsCreationProperties>
+				<AutoCreate>false</AutoCreate>
+					<OccurrenceAtTime>true</OccurrenceAtTime>
+					<OccurrenceDate>1665820800000</OccurrenceDate>
+					<OccurrenceTime Class="CodeUnitValue">
+						<Code><![CDATA[0]]></Code>
+						<Unit Class="TimeUnits"><![CDATA[SECOND]]></Unit>
+					</OccurrenceTime>
+					<RecurrenceCode Class="CodeUnitValue">
+						<Code><![CDATA[1]]></Code>
+						<Unit Class="TimeUnits"><![CDATA[SECOND]]></Unit>
+					</RecurrenceCode>
+			</DatasetsCreationProperties>
+			<ScaleRuler>
+				<Id>1665787765895</Id>
+				<Name><![CDATA[scale]]></Name>
+				<X>0</X><Y>-150</Y>
+				<PublicFlag>false</PublicFlag>
+				<PresentationFlag>false</PresentationFlag>
+				<ShowLabel>false</ShowLabel>
+				<DrawMode>SHAPE_DRAW_2D3D</DrawMode>
+				<Length>100</Length>
+				<Rotation>0</Rotation>
+				<ScaleType>BASED_ON_LENGTH</ScaleType>
+				<ModelLength>10</ModelLength>
+				<LengthUnits>METER</LengthUnits>
+				<Scale>10</Scale>
+				<InheritedFromParentAgentType>true</InheritedFromParentAgentType>
+			</ScaleRuler>
+			<CurrentLevel>1665787765898</CurrentLevel>
+			<ConnectionsId>1665787765894</ConnectionsId>
+			<Variables>
+				<Variable Class="PlainVariable">
+					<Id>1665787820200</Id>
+					<Name><![CDATA[objmapper]]></Name>
+					<Description><![CDATA[An instance of Jackson's <code>ObjectMapper</code> class; used in the <code>toJson</code> and <code>fromJson</code> functions.]]></Description>
+					<X>70</X><Y>70</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Properties SaveInSnapshot="true" Constant="false" AccessType="public" StaticVariable="true">
+						<Type><![CDATA[ObjectMapper]]></Type>        
+						<InitialValue Class="CodeValue">
+							<Code><![CDATA[new ObjectMapper().configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)]]></Code>
+						</InitialValue>
+					</Properties>
+				</Variable>
+				<Variable Class="PlainVariable">
+					<Id>1665787820202</Id>
+					<Name><![CDATA[jsonFilter]]></Name>
+					<X>70</X><Y>90</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Properties SaveInSnapshot="true" Constant="false" AccessType="public" StaticVariable="false">
+						<Type><![CDATA[JsonFilter]]></Type>        
+						<InitialValue Class="CodeValue">
+							<Code><![CDATA[// initialized in addtl class code]]></Code>
+						</InitialValue>
+					</Properties>
+				</Variable>
+				<Variable Class="CollectionVariable">
+					<Id>1665787820172</Id>
+					<Name><![CDATA[warnedParameters]]></Name>
+					<X>480</X><Y>490</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Properties SaveInSnapshot="true" AccessType="public" StaticVariable="true">
+						<CollectionClass><![CDATA[LinkedHashSet]]></CollectionClass>
+						<ElementClass><![CDATA[String]]></ElementClass>
+						<ValueElementClass><![CDATA[String]]></ValueElementClass>
+					</Properties>
+
+				</Variable>
+			</Variables>
+			<Functions>
+				<Function AccessType="public" StaticFunction="false">
+					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+					<ReturnType><![CDATA[String]]></ReturnType>
+					<Id>1665787820174</Id>
+					<Name><![CDATA[toJson]]></Name>
+					<Description><![CDATA[Converts the given object to JSON.<br>
+Note that agents and agent populations are handled manually due to a recursive issue.<br>
+@param object Any data type that can be converted to JSON<br>
+@return The JSON form of the given object, or `null` if an error was encountered<br>]]></Description>
+					<X>250</X><Y>90</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[object]]></Name>
+						<Type><![CDATA[Object]]></Type>
+					</Parameter>
+					<Body><![CDATA[return toJson(object, false);]]></Body>
+				</Function>
+				<Function AccessType="default" StaticFunction="false">
+					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+					<ReturnType><![CDATA[T]]></ReturnType>
+					<Id>1665787820176</Id>
+					<Name><![CDATA[fromJson]]></Name>
+					<Description><![CDATA[Converts a JSON string to a POJO (i.e., not an AnyLogic-based class - namely agent or agent population types)<br>
+@param json A JSON string to be converted **or** a path to a file with this information<br>
+@param clazz The class - specifically a standard Java type - to convert the provided string to<br>
+@return The object of the specified type (or `null` if errors were encountered)]]></Description>
+					<CustomModifierCode><![CDATA[public static <T>]]></CustomModifierCode>                 	
+					<X>480</X><Y>70</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[json]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[clazz]]></Name>
+						<Type><![CDATA[Class<T>]]></Type>
+					</Parameter>
+					<Body><![CDATA[// handle whether input is a JSON string or path to JSON file
+json = parseJsonString(json);
+
+T output = null;
+
+// Agent related conversion require specialize functions
+if (Agent.class.isAssignableFrom(clazz) || AgentList.class.isAssignableFrom(clazz)) {
+	try {
+		throw new Exception("Need to use `fromPopulationJson` for converting agent populations (returning null)");
+	} catch (Exception e) {e.printStackTrace();}
+	return null;
+}
+	
+try {
+	output = objmapper.readValue(json, clazz);
+} catch (IOException e) {
+	e.printStackTrace();
+}
+return output;]]></Body>
+				</Function>
+				<Function AccessType="default" StaticFunction="false">
+					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+					<ReturnType><![CDATA[HashMap<String, Object>]]></ReturnType>
+					<Id>1665787820180</Id>
+					<Name><![CDATA[agentToMap]]></Name>
+					<Description><![CDATA[Extracts all public fields from the given agent and puts it into a varname-to-varvalue map. ]]></Description>
+					<X>230</X><Y>490</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[agent]]></Name>
+						<Type><![CDATA[Agent]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[includeNullFields]]></Name>
+						<Type><![CDATA[boolean]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[seenAgents]]></Name>
+						<Type><![CDATA[HashSet<Object>]]></Type>
+					</Parameter>
+					<Body><![CDATA[//traceln("Converting agent '%s' of type: %s", agent.getName(), agent.getClass());
+
+// field mapping, name to value
+HashMap<String, Object> map = new HashMap<>();
+
+// store index if part of population (individual agents will have index of -1)
+//	(using internal prefixes ["_"], to not confuse w/any potential user vars of the same name)
+if (agent.getIndex() >= 0) {
+	// new: dont add index if part of default population
+	if (agent.getPopulation() != null && !agent.getDefaultPopulation().equals(agent.getPopulation()))
+		map.put("_index", agent.getIndex());
+}
+
+// generic agents should return immediately
+if (agent.getClass().equals(Agent.class)) {
+	return map;
+}
+
+// for custom agent types, use reflection to get all fields inside of agent
+Field[] fields = agent.getClass().getFields();
+String name;
+Object value;
+for (Field field : fields) {
+	name = field.getName();
+	
+	//traceln("Examining field named '%s' (type: %s)...", name, field.getType());
+	//traceln("  -> %s - %s", field.getType().getPackageName(), field.getType().getSimpleName());
+	
+	// skip known internal or problematic fields
+	//	(e.g., for the scale, connections, internal datasets, etc.)
+	// also skip common classes with assumed insignificance (e.g., shapes)
+	if (jsonFilter.skipJsonifying(field.getName(), field.getModifiers(), field.getType())) {
+		//traceln("\tSkipping!");
+		continue;
+	}
+	
+	// skip for constants/enums
+	if (Modifier.isStatic(field.getModifiers())) {
+		//traceln("\tSkipping!");
+		continue;
+	}
+	
+	// skip for agent populations with types that hshould be filtered
+	//if (value instanceof AgentArrayList)
+		
+	try {
+		field.trySetAccessible(); 
+		value = field.get(agent);
+		//traceln("\tValue is of type: %s", value.getClass());
+		if (value == null) {
+			//traceln("\tSkipping!");
+		}
+		// skip if value is top-level agent
+		else if (value.equals(agent.getRootAgent())) {
+			//traceln("\tSkipping!");
+			continue;
+		}
+		// apply this agent func for single agents
+		else if (value instanceof Agent) {
+			// skip if already seen
+			if (seenAgents.contains(value)) {
+				//traceln("\tSkipping!");
+				continue;
+			}
+			//traceln("\t%s IS AGENT; CONVERTING TO MAP!", name);
+			seenAgents.add((Agent)value); // XXX - Added to resolve stackoverflow when using toJson with no filters
+			value = agentToMap((Agent)value, includeNullFields, seenAgents);
+		}
+		// apply other agent func for populations 
+		else if (value instanceof AgentArrayList) {
+			// skip if already seen
+			if (seenAgents.contains(value)) {
+				//traceln("\tSkipping!");
+				continue;
+			}
+			//traceln("\t%s IS AGENTPOP; CONVERTING TO LIST!", name);
+			
+			value = agentPopToList((AgentArrayList)value, includeNullFields, seenAgents);
+		}
+		// handle when value is a collection/map holding an incompatible AnyLogic type
+		else if (value instanceof Collection || value instanceof Map) {
+			boolean skip = false;
+			//traceln("\tCollection named '%s', of type %s", name, value.getClass());
+			for (java.lang.reflect.Type type : ((ParameterizedType)field.getGenericType()).getActualTypeArguments()) {
+				//traceln("\t\tType named: %s of class %s", type.getTypeName(), type.getClass());
+				try {
+				
+					if (jsonFilter.skipJsonifying( (Class)type )) {
+						skip = true;
+						break;
+					}
+					
+				} catch (ClassCastException e) {
+					skip = true;
+					break;
+				}
+			}
+			if (skip) {
+				//traceln("\tSkipping!");
+				continue;
+			}
+		}
+		//traceln("\t%s: %s", name, value.getClass());
+		// try custom serializer
+		value = customClassSerializer(value);
+		map.put(name, value);
+	} catch (IllegalAccessException e) {
+		//traceln("\terrorred!!!!!");
+		if (includeNullFields) {
+			map.put(name, null);
+		}
+	}
+}
+
+//traceln(":: summary of types ::");
+//map.forEach((k,v) -> traceln("'%s' -> %s (from: %s)", k, v.getClass().getSimpleName(), v.getClass().getPackageName()));
+//traceln(":: ................ ::");
+/*
+try {
+	traceln(agent);
+	String s = objmapper.writeValueAsString(map);
+	traceln("%s\n\n", s);
+} catch (Exception e) {e.printStackTrace();}
+*/
+
+return map;]]></Body>
+				</Function>
+				<Function AccessType="default" StaticFunction="true">
+					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+					<ReturnType><![CDATA[ObjectAgentType]]></ReturnType>
+					<Id>1665787820182</Id>
+					<Name><![CDATA[agentType]]></Name>
+					<Description><![CDATA[Classifies an object based on its underlying class: <br>
+`0` for entirely Java types,<br>
+`1` for single agents,<br>
+`2` for agent populations,<br>
+`3` for Java collections with agent elements]]></Description>
+					<X>230</X><Y>430</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[agentObj]]></Name>
+						<Type><![CDATA[Object]]></Type>
+					</Parameter>
+					<Body><![CDATA[// TODO does type-3 return as expected? might need to use getComponentType/instanceof
+if (agentObj instanceof Agent)
+	return ObjectAgentType.AGENT_SINGLE;
+else if (agentObj instanceof AgentArrayList)
+	return ObjectAgentType.AGENT_POPULATION;
+else if (agentObj instanceof Collection 
+	&& ((Collection)agentObj).size() > 0)
+	return ObjectAgentType.AGENT_COLLECTION;
+return ObjectAgentType.JAVA;]]></Body>
+				</Function>
+				<Function AccessType="default" StaticFunction="false">
+					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+					<ReturnType><![CDATA[ArrayList<HashMap<String, Object>>]]></ReturnType>
+					<Id>1665787820184</Id>
+					<Name><![CDATA[agentPopToList]]></Name>
+					<Description><![CDATA[Creates a list of Map objects, one for each converted agent in the population]]></Description>
+					<X>230</X><Y>460</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[agentPop]]></Name>
+						<Type><![CDATA[AgentArrayList<Agent>]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[includeNullFields]]></Name>
+						<Type><![CDATA[boolean]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[seenAgents]]></Name>
+						<Type><![CDATA[HashSet<Object>]]></Type>
+					</Parameter>
+					<Body><![CDATA[//traceln("Converting pop of size %s, type: %s", agentPop.size(), agentPop.getClass());
+//traceln("=> %s", jsonFilter.skipJsonifying(agentPop.get(0).getClass()));
+
+// convert each individual agent in the population into a hashmap
+ArrayList<HashMap<String, Object>> popList = new ArrayList<>();
+// first check for filter
+if (agentPop.size() > 0 && jsonFilter.skipJsonifying(agentPop.get(0).getClass())) {
+	return popList;
+}
+
+agentPop.forEach(a -> {
+	if (!seenAgents.contains(a)) {
+		seenAgents.add(a);
+		popList.add( agentToMap(a, includeNullFields, seenAgents) );
+	}
+});
+return popList;]]></Body>
+				</Function>
+				<Function AccessType="public" StaticFunction="false">
+					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+					<ReturnType><![CDATA[String]]></ReturnType>
+					<Id>1665787820186</Id>
+					<Name><![CDATA[toJson]]></Name>
+					<Description><![CDATA[Converts the given object to JSON.<br>
+Note that agents and agent populations are handled manually due to a recursive issue.<br>
+@param object Any data type that can be converted to JSON<br>
+@param prettyprint Whether to output JSON in "pretty" format (with newlines, tabs, etc.)<br>
+@return The JSON form of the given object, or `null` if an error was encountered<br>]]></Description>
+					<X>230</X><Y>70</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[object]]></Name>
+						<Type><![CDATA[Object]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[prettyprint]]></Name>
+						<Type><![CDATA[boolean]]></Type>
+					</Parameter>
+					<Body><![CDATA[ObjectAgentType type = agentType(object);
+String output = null;
+HashSet<Object> seenAgents = new HashSet<>(); // used in AL types
+switch (type) {
+	case JAVA:
+	// standard types use basic object mapper (after passing thru custom serializer)
+		object = customClassSerializer(object);
+		try {
+			output = prettyprint
+						? objmapper.writerWithDefaultPrettyPrinter().writeValueAsString(object)
+						: objmapper.writeValueAsString(object);
+		} catch (JsonProcessingException e) {
+			e.printStackTrace();
+		}
+		break;
+	case AGENT_SINGLE:
+	// singleton agents use specialized function to convert to standard type
+		seenAgents.add(object);
+		HashMap<String, Object> map = agentToMap((Agent)object, false, seenAgents);
+		output = toJson(map, prettyprint);
+		break;
+	case AGENT_POPULATION:
+	// agent-populations convert to a standard list before outputting
+		seenAgents.add(object);
+		AgentArrayList<Agent> pop = (AgentArrayList) object;
+		ArrayList<?> popList = agentPopToList(pop, false, seenAgents);
+		output = toJson(popList, prettyprint);
+		break;
+	case AGENT_COLLECTION:
+	// java list with agent-contents; 
+	// 	use specialized functions for content and manually construct list
+		Collection collection = (Collection)object;
+		String[] list = (String[])collection.stream()
+			.map(a -> toJson(a, prettyprint))
+			.toArray(String[]::new);
+		String joiner = prettyprint ? ", " : ",";
+		output = "[" + String.join(joiner, list) + "]";
+		break;
+}
+return output;
+
+/*
+if (!type.equals(ObjectAgentType.JAVA)) { // agent-ish types
+	if (type.equals(ObjectAgentType.AGENT_COLLECTION)) { // Java list containing agents
+		// XXX - this IS callled when toJson(population) but NOT when toJson(agent with population inside)?!
+		// Note: apprently when this is called, subelements are a hashmap...?
+		Collection collection = (Collection)object;
+		String[] list = (String[])collection.stream()
+			.map(a -> toJson(a, prettyprint))
+			.toArray(String[]::new);
+		String joiner = prettyprint ? ", " : ",";
+		output = "[" + String.join(joiner, list) + "]";
+	} else { // single agent or pop of agents
+		output = toAgentJson(object, false, prettyprint);
+	}
+	return output;
+}
+
+// All other types should use object mapper
+try {
+	if (prettyprint)
+		output = objmapper.writerWithDefaultPrettyPrinter().writeValueAsString(object);
+	else
+		output = objmapper.writeValueAsString(object);
+} catch (JsonProcessingException e) {
+	e.printStackTrace();
+}
+return output;
+*/]]></Body>
+				</Function>
+				<Function AccessType="default" StaticFunction="false">
+					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+					<ReturnType><![CDATA[ArrayList]]></ReturnType>
+					<Id>1665787820190</Id>
+					<Name><![CDATA[fromPopulationJson]]></Name>
+					<Description><![CDATA[A function specifically for converting the given JSON (an array of objects mapping parameter names to value) to an arraylist of agents.<br>
+@param json A JSON string **or** a path to a file with this information<br>
+@param agent_clazz The class of the AL agent type<br>
+@param anyAgent Literally any other active agent in your model; used to properly start the agent (you can use `this` to refer to the active agent you're calling it from).
+@return AgentArrayList An access-only ArrayList of the agents]]></Description>
+					<CustomModifierCode><![CDATA[public static <T extends Agent>]]></CustomModifierCode>                 	
+					<X>480</X><Y>230</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[json]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[agent_clazz]]></Name>
+						<Type><![CDATA[Class<T>]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[anyAgent]]></Name>
+						<Type><![CDATA[Agent]]></Type>
+					</Parameter>
+					<Body><![CDATA[// Expected JSON is an array, where each element represents an agent's JSON
+// (e.g., "[{"_index":0}, {"_index":1}]")
+
+// handle whether input is a JSON string or path to JSON file
+json = parseJsonString(json);
+
+try {	
+	// To properly get entirety of single agent, need to convert array to JsonNode
+	JsonNode root = objmapper.readTree(json);
+	// Build the output array based on the number of agent jsons detected
+	ArrayList<T> newPop = new ArrayList();
+	// Run each child json's string thru `fromAgentJson` and add to output array
+	for (int i = 0; i < root.size(); i++) {
+		JsonNode child = root.get(i);
+		String childJson = objmapper.writeValueAsString(child);
+		T childAgent = fromAgentJson(childJson, agent_clazz, anyAgent);
+		newPop.add(childAgent);
+	}
+	return newPop;
+} catch (Exception e) {
+	e.printStackTrace();
+}
+
+return null;]]></Body>
+				</Function>
+				<Function AccessType="default" StaticFunction="false">
+					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+					<ReturnType><![CDATA[T]]></ReturnType>
+					<Id>1665787820192</Id>
+					<Name><![CDATA[fromAgentJson]]></Name>
+					<Description><![CDATA[Converts a JSON string of parameter mapping to an active/initialized agent<br>
+The agent will be added to the specified population.<br>
+@param json A JSON string to be converted to an AL agent **or** a path to a file with this information<br>
+@param clazz The class of the AL agent type to convert the provided string to<br>
+@param population The population to add this agent to
+@return The agent of the specified type (or `null` if errors were encountered)]]></Description>
+					<CustomModifierCode><![CDATA[public static <T extends Agent>]]></CustomModifierCode>                 	
+					<X>480</X><Y>190</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[json]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[clazz]]></Name>
+						<Type><![CDATA[Class<T>]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[population]]></Name>
+						<Type><![CDATA[AgentArrayList]]></Type>
+					</Parameter>
+					<Body><![CDATA[// handle whether input is a JSON string or path to JSON file
+json = parseJsonString(json);
+
+// Convert json to hashmap for name/value lookup
+HashMap<String, Object> paramLookup = fromJson(json, HashMap.class);
+
+// Agent is "generic" when not alive/started
+boolean genericAgent = population == null;
+
+try {
+	T myAgent;
+	if (genericAgent) {
+		myAgent = clazz
+				.getDeclaredConstructor()
+				.newInstance();
+	} else {
+		myAgent = clazz
+					.getDeclaredConstructor(Engine.class, Agent.class, AgentList.class)
+					.newInstance(population.getOwner().getEngine(), population.getOwner(), population);
+		population._add(myAgent);
+	}
+	
+	// User may have only passed a subset of parameters,
+	//	so try to set them all to defaults first.
+	// Note: cannot always call this because will throw null exception when default values 
+	//	reference function that require non-static usage (e.g., random functions)
+	try {
+		myAgent.setParametersToDefaultValues();
+	} catch (NullPointerException e) {
+		// At least mark as set
+		myAgent.markParametersAreSet();
+	}
+	
+	paramLookup.forEach( (name,value) -> {
+		// don't include custom key added to agent json in `agentPopToList`
+		if (!name.equals("_index")) {
+			boolean result;
+			try {
+				result = myAgent.setParameter(name, value, false);
+			} catch (ClassCastException e) {
+				// assume value is a string referring to a named object in the root agent
+				Object adjustedValue = getObjectOfName(value.toString(), myAgent.getRootAgent());
+				result = myAgent.setParameter(name, adjustedValue, false);
+			}
+			// alert user, but only once per run
+			if (!result && !warnedParameters.contains(name)) {
+				traceln("ONE-TIME WARNING: Parameter '%s' not found! Options: %s", name, Arrays.toString(myAgent.getParameterNames()));
+				warnedParameters.add(name);
+			}
+		}
+	});
+	
+	// Create and start if "living" agent
+	if (!genericAgent) {
+		int index = population.size();
+		population.callCreate(myAgent, index);
+		myAgent.start();
+	}
+	
+	return myAgent;
+} catch (InvocationTargetException | InstantiationException | NoSuchMethodException | IllegalAccessException e) {
+	e.printStackTrace();
+}
+return null;]]></Body>
+				</Function>
+				<Function AccessType="default" StaticFunction="false">
+					<ReturnModificator>VOID</ReturnModificator>
+					<ReturnType><![CDATA[AgentArrayList]]></ReturnType>
+					<Id>1665787820194</Id>
+					<Name><![CDATA[fromPopulationJson]]></Name>
+					<Description><![CDATA[Converts a list of agents from JSON (specifically an array of objects mapping parameter names to value) and adds it to an existing population.
+@param json A valid JSON array **or** a path to a file with this information
+@param agent_clazz The Java class for the agent type to convert to
+@param population The population to add the agents to]]></Description>
+					<CustomModifierCode><![CDATA[public static <T extends Agent>]]></CustomModifierCode>                 	
+					<X>480</X><Y>270</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[json]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[agent_clazz]]></Name>
+						<Type><![CDATA[Class<T>]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[population]]></Name>
+						<Type><![CDATA[AgentArrayList]]></Type>
+					</Parameter>
+					<Body><![CDATA[// Expected JSON is an array, where each element represents an agent's JSON
+// (e.g., "[{"_index":0}, {"_index":1}]")
+
+// handle whether input is a JSON string or path to JSON file
+json = parseJsonString(json);
+
+try {	
+	// To properly get entirety of single agent, need to convert array to JsonNode
+	JsonNode root = objmapper.readTree(json);
+	// Run each child json's string thru `fromAgentJson` and add to output array
+	for (int i = 0; i < root.size(); i++) {
+		JsonNode child = root.get(i);
+		String childJson = objmapper.writeValueAsString(child);
+		fromAgentJson(childJson, agent_clazz, population);
+	}
+} catch (Exception e) {
+	e.printStackTrace();
+}]]></Body>
+				</Function>
+				<Function AccessType="default" StaticFunction="true">
+					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+					<ReturnType><![CDATA[Object]]></ReturnType>
+					<Id>1665787820196</Id>
+					<Name><![CDATA[customClassSerializer]]></Name>
+					<Description><![CDATA[Tries to convert the given object to a serializable format that Jackson can understand.
+@param object The variable to be converted
+@return a generic object that should be serializable (or the original object if not handled)]]></Description>
+					<X>260</X><Y>520</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[object]]></Name>
+						<Type><![CDATA[Object]]></Type>
+					</Parameter>
+					<Body><![CDATA[if (object == null)
+	return null;
+
+if (object.getClass().isArray()) {
+	// no package names, just return object now
+	return object;
+}
+
+// quick-check since all currently handled types are analysis objects
+if (!object.getClass().getPackage().getName().equals("com.anylogic.engine.analysis")) {
+	return object;
+}
+
+if (object instanceof DataSet) {
+	return serializeDataSet((DataSet)object);
+} else if (object instanceof StatisticsDiscrete) {
+	return serializeStatisticsDiscrete((StatisticsDiscrete)object);
+} else if (object instanceof StatisticsContinuous) {
+	return serializeStatisticsContinuous((StatisticsContinuous)object);
+} else if (object instanceof HistogramData) {
+	return serializeHistogram1DData((HistogramData)object);
+} else if (object instanceof Histogram2DData) {
+	return serializeHistogram2DData((Histogram2DData)object);
+}
+return object;]]></Body>
+				</Function>
+				<Function AccessType="default" StaticFunction="false">
+					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+					<ReturnType><![CDATA[T]]></ReturnType>
+					<Id>1665787820198</Id>
+					<Name><![CDATA[fromAgentJson]]></Name>
+					<Description><![CDATA[Converts a JSON string of parameter mapping to an active/initialized agent.<br>
+@param json A JSON string to be converted to an AL agent **or** a path to a file with this information<br>
+@param clazz The class of the AL agent type to convert the provided string to<br>
+@param anyAgent Literally any other active agent in your model; used to properly start the agent (you can use `this` to refer to the active agent you're calling it from).
+@return The agent of the specified type (or `null` if errors were encountered)]]></Description>
+					<CustomModifierCode><![CDATA[public static <T extends Agent>]]></CustomModifierCode>                 	
+					<X>480</X><Y>110</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[json]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[clazz]]></Name>
+						<Type><![CDATA[Class<T>]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[anyAgent]]></Name>
+						<Type><![CDATA[Agent]]></Type>
+					</Parameter>
+					<Body><![CDATA[// handle whether input is a JSON string or path to JSON file
+json = parseJsonString(json);
+
+// Don't let the user try to avoid passing an active agent
+if (anyAgent == null || anyAgent.getEngine() == null) {
+	throw new RuntimeException(String.format("Argument 'anyAgent' must be a valid, active Agent ... was given '%s' (engine = %s)", anyAgent, anyAgent==null?null:anyAgent.getEngine()));
+}
+
+// Convert json to hashmap for name/value lookup
+HashMap<String, Object> paramLookup = fromJson(json, HashMap.class);
+
+try {
+	T myAgent = clazz
+			.getDeclaredConstructor()
+			.newInstance();
+	
+	// User may have only passed a subset of parameters,
+	//	so try to set them all to defaults first.
+	// Note: cannot always call this because will throw null exception when default values 
+	//	reference function that require non-static usage (e.g., random functions)
+	try {
+		myAgent.setParametersToDefaultValues();
+	} catch (NullPointerException e) {
+		// At least mark as set
+		myAgent.markParametersAreSet();
+	}
+	
+	paramLookup.forEach( (name,value) -> {
+		// don't include custom key added to agent json in `agentPopToList`
+		if (!name.equals("_index")) {
+			boolean result = myAgent.setParameter(name, value, false);
+			// alert user, but only once per run
+			if (!result && !warnedParameters.contains(name)) {
+				traceln("ONE-TIME WARNING: Parameter " + name + " not found!");
+				warnedParameters.add(name);
+			}
+		}
+	});
+
+	// fully initialize the agent / "awaken" it
+	myAgent.createAndStart(anyAgent);
+	
+	return myAgent;
+} catch (InvocationTargetException | InstantiationException | NoSuchMethodException | IllegalAccessException e) {
+	e.printStackTrace();
+}
+return null;]]></Body>
+				</Function>
+				<Function AccessType="default" StaticFunction="true">
+					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+					<ReturnType><![CDATA[Object]]></ReturnType>
+					<Id>1673381927099</Id>
+					<Name><![CDATA[getObjectOfName]]></Name>
+					<Description><![CDATA[Use reflection to retrieve the named object from inside of the given agent.<br>
+If errors are encountered, they'll be printed out and null will be returned.]]></Description>
+					<X>480</X><Y>460</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[name]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[agent]]></Name>
+						<Type><![CDATA[Agent]]></Type>
+					</Parameter>
+					<Body><![CDATA[// note: called by 'fromAgentJson'
+
+Object obj = null;
+try {
+	obj = agent.getClass().getField(name).get(agent);
+} catch (Exception e) {
+	e.printStackTrace();
+}
+return obj;]]></Body>
+				</Function>
+				<Function AccessType="default" StaticFunction="false">
+					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+					<ReturnType><![CDATA[T]]></ReturnType>
+					<Id>1678298911650</Id>
+					<Name><![CDATA[fromAgentJson]]></Name>
+					<Description><![CDATA[Converts a JSON string of parameter mapping to an active agent, initialized from the root level agent.<br>
+This function will only work if called from the AnyLogic editor with the ALJsonifier object created as an agent itself (i.e., not programmatically) or manually initialized by calling its `createAndStart` function.<br>
+@param json A JSON string to be converted to an AL agent **or** a path to a file with this information<br>
+@param clazz The class of the AL agent type to convert the provided string to<br>
+@return The agent of the specified type (or `null` if errors were encountered)]]></Description>
+					<CustomModifierCode><![CDATA[public <T extends Agent>]]></CustomModifierCode>                 	
+					<X>500</X><Y>130</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[json]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[clazz]]></Name>
+						<Type><![CDATA[Class<T>]]></Type>
+					</Parameter>
+					<Body><![CDATA[return ALJsonifier.fromAgentJson(json, clazz, getRootAgent());]]></Body>
+				</Function>
+				<Function AccessType="public" StaticFunction="true">
+					<ReturnModificator>VOID</ReturnModificator>
+					<ReturnType><![CDATA[double]]></ReturnType>
+					<Id>1678300792532</Id>
+					<Name><![CDATA[writeFile]]></Name>
+					<Description><![CDATA[Write some content to a file.<br>
+If the file already exists, content will be overridden.<br>
+Any errors will be printed to the console.]]></Description>
+					<X>230</X><Y>400</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[file]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[content]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Body><![CDATA[try {
+	FileWriter myWriter = new FileWriter(file);
+	myWriter.write(content);
+	myWriter.close();
+} catch (IOException e) {
+	e.printStackTrace();
+}]]></Body>
+				</Function>
+				<Function AccessType="public" StaticFunction="true">
+					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+					<ReturnType><![CDATA[String]]></ReturnType>
+					<Id>1678301012847</Id>
+					<Name><![CDATA[readFile]]></Name>
+					<Description><![CDATA[Read and return some content from file.<br>
+If the file is not found, the error will be printed to the console and null will be returned.]]></Description>
+					<X>480</X><Y>400</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[file]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Body><![CDATA[String output = null;
+try {
+	StringBuilder builder = new StringBuilder();
+	File myObj = new File(file);
+	Scanner myReader = new Scanner(myObj);
+	while (myReader.hasNextLine()) {
+		builder.append(myReader.nextLine());
+	}
+	myReader.close();
+	output = builder.toString();
+} catch (FileNotFoundException e) {
+	e.printStackTrace();
+}
+return output;]]></Body>
+				</Function>
+				<Function AccessType="default" StaticFunction="true">
+					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+					<ReturnType><![CDATA[String]]></ReturnType>
+					<Id>1678309101105</Id>
+					<Name><![CDATA[parseJsonString]]></Name>
+					<Description><![CDATA[Allows passing a ".json" file to be read and return, otherwise returns the input.]]></Description>
+					<X>480</X><Y>430</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[input]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Body><![CDATA[input = input.strip();
+if (input.startsWith("{") || input.startsWith("[")) {
+	// assume JSON string
+	return input;
+}
+
+try {
+	// test to make sure is a valid path
+	java.nio.file.Path p = Paths.get(input);
+	if (!p.toFile().exists()) {
+		throw new RuntimeException(String.format("Detected input as a file but it does not exist: %s", input));
+	}
+	// it is! read and return it
+	return readFile(input);
+} catch (InvalidPathException ex) {
+	// not a valid path; assume JSON string to be returned
+    return input;
+}]]></Body>
+				</Function>
+				<Function AccessType="public" StaticFunction="false">
+					<ReturnModificator>VOID</ReturnModificator>
+					<ReturnType><![CDATA[String]]></ReturnType>
+					<Id>1678310009514</Id>
+					<Name><![CDATA[toJson]]></Name>
+					<Description><![CDATA[Converts the given object to JSON and write it to the given file (will overwrite it if it exists) without pretty printing.<br>
+Note that agents and agent populations are handled manually due to a recursive issue.<br>
+@param object Any data type that can be converted to JSON<br>
+@param file The path to the desried JSON output file; can be relative to the working directory]]></Description>
+					<X>250</X><Y>150</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[object]]></Name>
+						<Type><![CDATA[Object]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[file]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Body><![CDATA[toJson(object, false, file);]]></Body>
+				</Function>
+				<Function AccessType="public" StaticFunction="false">
+					<ReturnModificator>VOID</ReturnModificator>
+					<ReturnType><![CDATA[String]]></ReturnType>
+					<Id>1678310051457</Id>
+					<Name><![CDATA[toJson]]></Name>
+					<Description><![CDATA[Converts the given object to JSON and write it to a file (it will overwrite if it exists).<br>
+Note that agents and agent populations are handled manually due to a recursive issue.<br>
+@param object Any data type that can be converted to JSON<br>
+@param prettyprint Whether to output JSON in "pretty" format (with newlines, tabs, etc.)<br>
+@param file The path to the desried JSON output file; can be relative to the working directory]]></Description>
+					<X>230</X><Y>130</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[object]]></Name>
+						<Type><![CDATA[Object]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[prettyprint]]></Name>
+						<Type><![CDATA[boolean]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[file]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Body><![CDATA[String output = toJson(object, prettyprint);
+writeFile(file, output);]]></Body>
+				</Function>
+			</Functions>
+			<AgentLinks>
+				<AgentLink>
+					<Id>1665787765894</Id>
+					<Name><![CDATA[connections]]></Name>
+					<X>50</X><Y>-50</Y>
+					<Label><X>15</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<HandleReceiveInConnections>false</HandleReceiveInConnections>
+					<AgentLinkType>COLLECTION_OF_LINKS</AgentLinkType>
+					<AgentLinkBidirectional>true</AgentLinkBidirectional>
+					<MessageType><![CDATA[Object]]></MessageType>
+					<LineStyle>SOLID</LineStyle>
+					<LineWidth>1</LineWidth>
+					<LineColor>-16777216</LineColor>
+					<LineZOrder>UNDER_AGENTS</LineZOrder>
+					<LineArrow>NONE</LineArrow>
+					<LineArrowPosition>END</LineArrowPosition>
+				</AgentLink>
+			</AgentLinks>
+
+
+			<Presentation>
+				<Level>
+					<Id>1665787765898</Id>
+					<Name><![CDATA[level]]></Name>
+					<X>0</X><Y>0</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>true</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>false</ShowLabel>
+					<DrawMode>SHAPE_DRAW_2D3D</DrawMode>
+					<Z>0</Z>
+					<LevelVisibility>DIM_NON_CURRENT</LevelVisibility>
+
+			<Presentation>
+				<Image>
+					<Id>1665791283971</Id>
+					<Name><![CDATA[image]]></Name>
+					<X>-8</X><Y>-8</Y>
+					<Label><X>0</X><Y>-10</Y></Label>
+					<PublicFlag>true</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>false</ShowLabel>
+					<DrawMode>SHAPE_DRAW_2D3D</DrawMode>
+					<EmbeddedIcon>true</EmbeddedIcon>
+					<Z>0</Z>
+					<Width>16</Width>
+					<Height>16</Height>
+					<Rotation>0.0</Rotation>
+					<ImageFiles>
+						<ImageResourceReference>
+							<PackageName><![CDATA[anylogic_jsonifier_library]]></PackageName>
+							<ClassName><![CDATA[jsonifier_16.png]]></ClassName>
+						</ImageResourceReference>
+					</ImageFiles>
+					<OriginalSize>false</OriginalSize>
+				</Image>
+				<Text>
+					<Id>1678300425032</Id>
+					<Name><![CDATA[text1]]></Name>
+					<X>220</X><Y>40</Y>
+					<Label><X>0</X><Y>-10</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>false</ShowLabel>
+					<DrawMode>SHAPE_DRAW_2D</DrawMode>
+					<EmbeddedIcon>false</EmbeddedIcon>
+					<Z>0</Z>
+					<Rotation>0.0</Rotation>
+					<Color>-16777216</Color>
+					<Text><![CDATA[To-JSON variants
+]]></Text>
+					<Font>
+						<Name>SansSerif</Name>
+						<Size>10</Size>
+						<Style>1</Style>
+					</Font>
+					<Alignment>LEFT</Alignment>
+				</Text>
+				<Text>
+					<Id>1678300473785</Id>
+					<Name><![CDATA[text2]]></Name>
+					<X>470</X><Y>40</Y>
+					<Label><X>0</X><Y>-10</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>false</ShowLabel>
+					<DrawMode>SHAPE_DRAW_2D</DrawMode>
+					<EmbeddedIcon>false</EmbeddedIcon>
+					<Z>0</Z>
+					<Rotation>0.0</Rotation>
+					<Color>-16777216</Color>
+					<Text><![CDATA[From-JSON variants
+]]></Text>
+					<Font>
+						<Name>SansSerif</Name>
+						<Size>10</Size>
+						<Style>1</Style>
+					</Font>
+					<Alignment>LEFT</Alignment>
+				</Text>
+				<Text>
+					<Id>1678300488541</Id>
+					<Name><![CDATA[text3]]></Name>
+					<X>210</X><Y>370</Y>
+					<Label><X>0</X><Y>-10</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>false</ShowLabel>
+					<DrawMode>SHAPE_DRAW_2D</DrawMode>
+					<EmbeddedIcon>false</EmbeddedIcon>
+					<Z>0</Z>
+					<Rotation>0.0</Rotation>
+					<Color>-16777216</Color>
+					<Text><![CDATA[To-JSON helpers]]></Text>
+					<Font>
+						<Name>SansSerif</Name>
+						<Size>10</Size>
+						<Style>1</Style>
+					</Font>
+					<Alignment>LEFT</Alignment>
+				</Text>
+				<Text>
+					<Id>1678300495277</Id>
+					<Name><![CDATA[text4]]></Name>
+					<X>470</X><Y>370</Y>
+					<Label><X>0</X><Y>-10</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>false</ShowLabel>
+					<DrawMode>SHAPE_DRAW_2D</DrawMode>
+					<EmbeddedIcon>false</EmbeddedIcon>
+					<Z>0</Z>
+					<Rotation>0.0</Rotation>
+					<Color>-16777216</Color>
+					<Text><![CDATA[From-JSON helpers]]></Text>
+					<Font>
+						<Name>SansSerif</Name>
+						<Size>10</Size>
+						<Style>1</Style>
+					</Font>
+					<Alignment>LEFT</Alignment>
+				</Text>
+				<Text>
+					<Id>1678300553340</Id>
+					<Name><![CDATA[text5]]></Name>
+					<X>50</X><Y>40</Y>
+					<Label><X>0</X><Y>-10</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>false</ShowLabel>
+					<DrawMode>SHAPE_DRAW_2D</DrawMode>
+					<EmbeddedIcon>false</EmbeddedIcon>
+					<Z>0</Z>
+					<Rotation>0.0</Rotation>
+					<Color>-16777216</Color>
+					<Text><![CDATA[Shared objects]]></Text>
+					<Font>
+						<Name>SansSerif</Name>
+						<Size>10</Size>
+						<Style>1</Style>
+					</Font>
+					<Alignment>LEFT</Alignment>
+				</Text>
+			</Presentation>
+
+				</Level>
+			</Presentation>
+
+		</ActiveObjectClass>
+	</ActiveObjectClasses>	
+	<DifferentialEquationsMethod>EULER</DifferentialEquationsMethod>
+	<MixedEquationsMethod>RK45_NEWTON</MixedEquationsMethod>
+	<AlgebraicEquationsMethod>MODIFIED_NEWTON</AlgebraicEquationsMethod>
+	<AbsoluteAccuracy>1.0E-5</AbsoluteAccuracy>
+	<FixedTimeStep>0.001</FixedTimeStep>
+	<RelativeAccuracy>1.0E-5</RelativeAccuracy>
+	<TimeAccuracy>1.0E-5</TimeAccuracy>
+	<Frame>
+		<Width>1000</Width>
+		<Height>600</Height>
+	</Frame>
+	<Database>
+		<Logging>false</Logging>
+		<AutoExport>false</AutoExport>
+		<ShutdownCompact>false</ShutdownCompact>
+		<ImportSettings>
+		</ImportSettings>
+		<ExportSettings>
+		</ExportSettings>
+	</Database>
+	
+	<RunConfiguration ActiveObjectClassId="1665787765899">
+		<Id>1665787765903</Id>
+		<Name><![CDATA[RunConfiguration]]></Name>
+		<MaximumMemory>512</MaximumMemory>
+		<ModelTimeProperties>
+			<StopOption><![CDATA[Stop at specified time]]></StopOption>
+			<InitialDate><![CDATA[1665705600000]]></InitialDate>	
+			<InitialTime><![CDATA[0.0]]></InitialTime>	
+			<FinalDate><![CDATA[1668384000000]]></FinalDate>	
+			<FinalTime><![CDATA[100.0]]></FinalTime>	
+		</ModelTimeProperties>
+		<AnimationProperties>
+			<StopNever>true</StopNever>
+			<ExecutionMode>realTimeScaled</ExecutionMode>
+			<RealTimeScale>1.0</RealTimeScale>
+			<EnableZoomAndPanning>true</EnableZoomAndPanning>
+			<EnableDeveloperPanel>false</EnableDeveloperPanel>
+			<ShowDeveloperPanelOnStart>false</ShowDeveloperPanelOnStart>
+		</AnimationProperties>
+		<Inputs>		
+		</Inputs>
+		<Outputs>
+		</Outputs>
+	</RunConfiguration>
+	<Experiments>	
+		<!--   =========   Simulation Experiment   ========  -->
+		<SimulationExperiment ActiveObjectClassId="1665787765899">
+			<Id>1665787765901</Id>
+			<Name><![CDATA[Simulation]]></Name>
+			<ClientAreaTopLeft><X>0</X><Y>0</Y></ClientAreaTopLeft>
+			<CommandLineArguments><![CDATA[]]></CommandLineArguments>
+			<MaximumMemory>512</MaximumMemory>
+			<RandomNumberGenerationType>fixedSeed</RandomNumberGenerationType>
+			<CustomGeneratorCode>new Random()</CustomGeneratorCode>
+			<SeedValue>1</SeedValue>
+			<SelectionModeForSimultaneousEvents>LIFO</SelectionModeForSimultaneousEvents>
+			<VmArgs><![CDATA[]]></VmArgs>
+			<LoadRootFromSnapshot>false</LoadRootFromSnapshot>
+
+			<Presentation>
+				<Text>
+					<Id>1665787765902</Id>
+					<Name><![CDATA[text]]></Name>
+					<X>50</X><Y>30</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>true</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>false</ShowLabel>
+					<DrawMode>SHAPE_DRAW_2D3D</DrawMode>
+					<EmbeddedIcon>false</EmbeddedIcon>
+					<Z>0</Z>
+					<Rotation>0.0</Rotation>
+					<Color>-12490271</Color>
+					<Text><![CDATA[JSONifier for AnyLogic]]></Text>
+					<Font>
+						<Name>SansSerif</Name>
+						<Size>24</Size>
+						<Style>0</Style>
+					</Font>
+					<Alignment>LEFT</Alignment>
+				</Text>
+			</Presentation>
+
+			<Parameters>			
+			</Parameters>			
+			<PresentationProperties>
+				<EnableZoomAndPanning>true</EnableZoomAndPanning>
+				<ExecutionMode><![CDATA[realTimeScaled]]></ExecutionMode>
+				<Title><![CDATA[JSONifier for AnyLogic : Simulation]]></Title>	
+				<EnableDeveloperPanel>true</EnableDeveloperPanel>
+				<ShowDeveloperPanelOnStart>false</ShowDeveloperPanelOnStart>
+				<RealTimeScale>1.0</RealTimeScale>
+			</PresentationProperties>
+			<ModelTimeProperties>
+				<StopOption><![CDATA[Never]]></StopOption>
+				<InitialDate><![CDATA[1665705600000]]></InitialDate>	
+				<InitialTime><![CDATA[0.0]]></InitialTime>	
+				<FinalDate><![CDATA[1668384000000]]></FinalDate>	
+				<FinalTime><![CDATA[100.0]]></FinalTime>	
+			</ModelTimeProperties>
+			<BypassInitialScreen>true</BypassInitialScreen>
+		</SimulationExperiment>	
+	</Experiments>
+	<JavaClasses>
+		<!--   =========   Java Class   ========  -->
+		<JavaClass>
+			<Id>1665787875730</Id>
+			<Name><![CDATA[CustomAnnotationIntrospector]]></Name>
+			<Text><![CDATA[import com.fasterxml.jackson.databind.introspect.JacksonAnnotationIntrospector;
+
+import com.fasterxml.jackson.databind.introspect.Annotated;
+import com.fasterxml.jackson.databind.type.TypeFactory;
+
+import com.fasterxml.jackson.databind.introspect.AnnotatedMember;
+
+
+
+/**
+ * CustomAnnotationIntrospector
+ */	
+public class CustomAnnotationIntrospector extends JacksonAnnotationIntrospector implements Serializable {
+
+	private final JsonFilter filter;
+
+    /**
+     * Default constructor
+     */
+    public CustomAnnotationIntrospector() {
+    	filter = null;
+    }
+
+    /**
+     * Constructor initializing the fields
+     */
+    public CustomAnnotationIntrospector(JsonFilter filter) {
+		this.filter = filter;
+    }
+    
+    @Override
+    public boolean hasIgnoreMarker(AnnotatedMember a) {
+    	if (super.hasIgnoreMarker(a))
+    		return true;
+    	if (filter == null)
+    		return false;
+    	return a.getAnnotation(AnyLogicInternalCodegenAPI.class) != null;
+    }
+    
+    @Override
+    protected boolean _isIgnorable(Annotated a) {
+    	if (super._isIgnorable(a))
+    		return true;
+    	if (filter == null)
+    		return false;
+    	return filter.skipJsonifying(a.getRawType());
+    }
+
+	/**
+	 * This number is here for model snapshot storing purpose<br>
+	 * It needs to be changed when this class gets changed
+	 */ 
+	private static final long serialVersionUID = 1L;
+
+}]]></Text>
+		</JavaClass>
+		<!--   =========   Java Class   ========  -->
+		<JavaClass>
+			<Id>1665787888479</Id>
+			<Name><![CDATA[JsonFilter]]></Name>
+			<Text><![CDATA[import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.introspect.JacksonAnnotationIntrospector;
+import com.fasterxml.jackson.databind.introspect.Annotated;
+import com.fasterxml.jackson.databind.type.TypeFactory;
+import java.lang.reflect.Modifier;
+import java.lang.reflect.Field;
+
+
+/**
+ * A custom filter used when converting Java/AnyLogic objects to JSON.
+ * It can also work in a blacklist mode (default) or a whitelist mode:
+ * 	In blacklist mode, **including** an object to it will **exclude** it from the output.
+ * 	In whitelist mode, it will prevent all objects from outputted **except** for what's included in the filter.
+ * There are three possible ways to reference object - by class, package, or name.
+ * 	Both modes operate based on an 'OR' condition, meaning you only have to specify one way and it will be applied.
+ */	
+public class JsonFilter {
+	private ObjectMapper parent;
+	
+	/**
+	 * A reference for what classes are included in this class's usage of "default classes" when in **blacklist** mode.
+	 */
+	public final static HashSet<Class<?>> defaultBlacklistedClasses = new HashSet<>(Arrays.asList(
+			Color.class,
+			Font.class,
+			Shape.class,
+			EventOriginator.class,
+			Statechart.class,
+			IStatechartState.class,
+			AbstractLinkToAgent.class,
+			Scale.class,
+			CustomDistribution.class,
+			Random.class,
+			Histogram.Appearance.class,
+			Histogram2D.Appearance.class,
+			Chart2DPlot.Appearance.class,
+			SDIntegrationManager.class,
+			LinkToAgentAnimationSettings.class
+			));
+	
+	/**
+	 * A reference for what packages are included in this class's usage of "default packages" when in **blacklist** mode.
+	 */
+	public final static HashSet<String> defaultBlacklistedPackages = new HashSet<>(Arrays.asList(
+		"com.anylogic.libraries.pypeline",
+		"anylogic_jsonifier_library",
+		"com.anylogic.libraries.processmodeling",
+		"com.anylogic.libraries.material_handling",
+		"com.anylogic.libraries.pedestrian",
+		"com.anylogic.libraries.rail",
+		"com.anylogic.libraries.road",
+		"com.anylogic.libraries.fluid",
+		"com.anylogic.engine.markup",
+		"com.anylogic.engine.connectivity",
+		"com.anylogic.engine.presentation"
+		));
+	
+	/**
+	 * A reference for what packages are included in this class's usage of "default names" when in **blacklist** mode.
+	 */
+	public final static HashSet<String> defaultBlacklistedNames = new HashSet<>(Arrays.asList(
+			".+_xjal",
+			"serialVersionUID"
+		));
+	
+	/**
+	 * A reference for what classes are included in this class's usage of "default classes" when in **whitelist** mode.
+	 */
+	public final static HashSet<Class<?>> defaultWhitelistedClasses = new HashSet<>(Arrays.asList(
+			Number.class,
+			Boolean.class,
+			Agent.class,
+			AgentList.class,
+			ChartItem.class,
+			DataItem.class,
+			DataSet.class,
+			HistogramData.class,
+			StatisticsContinuous.class,
+			StatisticsDiscrete.class
+			));
+	
+	/**
+	 * A reference for what packages are included in this class's usage of "default packages" when in **whitelist** mode.
+	 */
+	public final static HashSet<String> defaultWhitelistedPackages = new HashSet<>(Arrays.asList(
+			"java.util",
+			"java.lang"
+			
+		));
+	
+	/**
+	 * A reference for what packages are included in this class's usage of "default names" when in **whitelist** mode.
+	 */
+	public final static HashSet<String> defaultWhitelistedNames = new HashSet<>(Arrays.asList(
+			
+		));
+	
+	
+	/**
+	 * The active set of classes to consider in JSON-conversion.
+	 */
+	private HashSet<Class<?>> includedClasses = new HashSet<>();
+	
+	/**
+	 * The active set of packages for which classes directly in the package are considered in JSON-conversion.
+	 */
+	private HashSet<String> includedPackages = new HashSet<>();
+	
+	/**
+	 * The active set of object names (parsed as regex patterns) to consider in JSON-conversion.
+	 */
+	private HashSet<String> includedNames = new HashSet<>();
+	
+	/**
+	 * Whether to include autogenerated objects
+	 */
+	private boolean includeGeneratedObjects = false;
+	
+	/**
+	 * Whether the filtering is operating in blacklist mode (included => won't be outputted) or whitelist mode (included => only will be outputted)
+	 */
+	private boolean inBlacklistMode = true;
+	
+	
+	/**
+	 * Create a new filter object in blacklist mode with the default set of names/classes/packages.
+	 */
+	public JsonFilter(ObjectMapper parentMapper) {
+		// TODO should throw an error if parent mapper is null?
+		this(parentMapper, true);
+	}
+	
+	/**
+	 * Create a new filter object in blacklist mode.
+	 * @param parentMapper A reference to the object mapper this filter should apply to
+	 * @param loadDefault Whether to load the default set of classes + packages
+	 */
+	public JsonFilter(ObjectMapper parentMapper, boolean loadDefault) {
+		this(parentMapper, true, loadDefault);
+	}
+	
+	/**
+	 * Create a new filter object.
+	 * @param parentMapper A reference to the object mapper this filter should apply to
+	 * @param inBlacklistMode Whether to set the filter in blacklist mode (vs whitelist mode)
+	 * @param loadDefault Whether to load the default set of classes + packages
+	 */
+	public JsonFilter(ObjectMapper parentMapper, boolean inBlacklistMode, boolean loadDefault) {
+		this.parent = parentMapper;
+		this.inBlacklistMode = inBlacklistMode;
+		if (loadDefault) {
+			resetNames();
+			resetClasses();
+			resetPackages();
+		}
+	}
+	
+	/**
+	 * Determine if the given info seems to be an autogenerated object.
+	 * Both arguments are optional (may be null)
+	 * @param name
+	 * @param clazz
+	 * @return
+	 */
+	private static boolean looksGenerated(String name, int modifiers, Class<?> clazz) {
+		// [notes]
+		// _ds_* == only datasets
+		// *_xjal == can be HyperArrays, Level[], Agent types, SDIntegrationManager, Map, EventTimeout; sometimes protected and static
+		// __* == seem to be all protected and static, but any types (even common like double)
+		// _* = protected static ints
+		// any vars with the @AnyLogicInternalCodegenAPI annotation -- BUT DOESNT HAVE RETENTION SO IS ERASED ON RUNTIME
+		// _origin_VA
+		
+		if (name != null) {
+			// if class is not provided, assume all _ds_* names are generated
+			if (name.startsWith("_ds_") && (clazz == null || DataSet.class.isAssignableFrom(clazz))) {
+				return true;
+			}
+	
+			// no class info is considered, as it can be too many types
+		    if (name.endsWith("_xjal")) {
+		    	return true;
+		    }
+		    
+		    // fixed name of autogen'd view area (even though it likely can't/won't be serialized)
+		    if (name.equals("_origin_VA")) {
+		    	return true;
+		    }
+		}
+		
+		if (clazz != null) {
+		    // check for _* or __* objects that are protected and static 
+		    if (name != null && name.startsWith("_") && Modifier.isProtected(modifiers) && Modifier.isStatic(modifiers)) {
+		    	return true;
+		    }
+		}
+		
+	    return false;
+	}
+	
+	/**
+	 * Determines whether a field should be omitted from being converted to JSON, based on info about it.
+	 * To qualify based on the name is based on regex pattern matching.
+	 * To qualify for being "inside" the package, the exact class must be inside the package.
+	 * To qualify for being a class, the class must be assignable from the one in the filter
+	 * 		(i.e., it can either be the same class as the one in the filter or a child class of it).
+	 * 
+	 * @param name The name of the object; null=skipped
+	 * @param modifiers The object modifiers; 1=skipped/just public
+	 * @param clazz The class of the object; null=skipped
+	 * @return true if the provided field should not be included in the outputted JSON
+	 */
+	public boolean skipJsonifying(String name, int modifiers, Class<?> clazz) {
+		boolean skip = false; // store in a variable since generated-checked should be applied first, and possibly overridden by the following checks
+		if (looksGenerated(name, modifiers, clazz)) {
+			// skip when (included and blacklist) or (not included and not blacklist/whitelist)
+			skip = inBlacklistMode == includeGeneratedObjects;
+		}
+		
+		// for blacklist mode, can immediate consider it skippable if ANY of the conditions are met
+		boolean nameIncluded = name != null && includedNames.stream().anyMatch(n -> name.matches(n));
+		if (inBlacklistMode && nameIncluded) {
+			skip = true;
+		}
+		boolean clsIncluded = clazz != null && includedClasses.stream().anyMatch(c -> c.isAssignableFrom(clazz));
+		if (inBlacklistMode && clsIncluded) {
+			skip = true;
+		}
+		boolean pkgIncluded = clazz != null && includedPackages.contains(clazz.getPackageName());
+		if (inBlacklistMode && pkgIncluded) {
+			skip = true;
+		}
+		
+		// for whitelist mode, ALL the conditions need to fail to be skipped
+		if (!inBlacklistMode && !nameIncluded && !clsIncluded && !pkgIncluded) {
+			skip = true;
+		}
+		
+		// otherwise, assume it should be OK to include
+		return skip;
+	}
+	
+	/**
+	 * Determines whether a field should be omitted from being converted to JSON, based on just an object's name.
+	 * To qualify based on the name is based on regex pattern matching.
+	 * @param name The name of the object; assumed to be non-null
+	 * @return true if the provided field should not be included in the outputted JSON
+	 */
+	public boolean skipJsonifying(String name) {
+		return skipJsonifying(name, 1, null);
+	}
+	
+	/**
+	 * Determines whether a field should be omitted from being converted to JSON, based on the object's class and package name.
+	 * To qualify for being a class, the class must be assignable from the one in the filter
+	 * 		(i.e., it can either be the same class as the one in the filter or a child class of it).
+	 * To qualify for being "inside" the package, the exact class must be inside the package.
+	 * @param clazz The class of the object; assumed to be non-null
+	 * @return true if the provided field should not be included in the outputted JSON
+	 */
+	public boolean skipJsonifying(Class<?> clazz) {
+		return skipJsonifying(null, 1, clazz);
+	}
+	
+	/**
+	 * Get a report of everything that will/won't be skipped in the given object.
+	 * @param obj
+	 * @return
+	 */
+	public Map<Pair<String,Class<?>>,Boolean> skipJsonifyingReport(Object obj) {
+		Map<Pair<String,Class<?>>,Boolean> report = new HashMap<>();
+		for (Field f : obj.getClass().getDeclaredFields()) {
+			String name = f.getName();
+			Class<?> cls = f.getType();
+			report.put(new Pair<>(name, cls), skipJsonifying(name, f.getModifiers(), cls));
+		}
+		return report;
+	}
+	
+	/**
+	 * Gets the packages whose packages are included in the filter.
+	 * When in blacklist mode (default), these will be skipped in the JSON conversion; in whitelist mode, only these will be included.
+	 * @return a copy of the set of fully qualified package names
+	 */
+	public HashSet<String> getIncludedPackages() {
+		return new HashSet<>(includedPackages);
+	}
+	
+	/**
+	 * Gets the classes that are included in the filter.
+	 * When in blacklist mode (default), these will be skipped in the JSON conversion; in whitelist mode, only these will be included.
+	 * Any subclasses will also be included (e.g., if `Shape.class` is included, `ShapeCAD.class` will be considered included as well).
+	 * @return a copy of the set of classes
+	 */
+	public HashSet<Class<?>> getIncludedClasses() {
+		return new HashSet<>(includedClasses);
+	}
+	
+	/**
+	 * Gets the name patterns who are included in the filter.
+	 * When in blacklist mode (default), these will be skipped in the JSON conversion; in whitelist mode, only these will be included.
+	 * @return a copy of the set of names, as regex patterns
+	 */
+	public HashSet<String> getIncludedNames() {
+		return new HashSet<>(includedNames);
+	}
+	
+	/**
+	 * Various objects are auto-generated and added to your model by AnyLogic in response to certain user-defined objects/properties.
+	 * See `setGeneratedInclusion` for an example.
+	 * 
+	 * @return Whether auto-generated objects are included in the outputted JSON
+	 */
+	public boolean isGeneratedIncluded() {
+		return this.includeGeneratedObjects;
+	}
+	
+	/**
+	 * 
+	 * @return Whether the filter is currently in blacklist mode (no objects except those included will be outputted)
+	 */
+	public boolean isInBlacklistMode() {
+		return this.inBlacklistMode;
+	}
+	
+	/**
+	 * @return Whether the filter is currently in whitelist mode (only included objects will be outputted)
+	 */
+	public boolean isInWhitelistMode() {
+		return !this.inBlacklistMode;
+	}
+	
+	/**
+	 * Update the mode of this object (i.e., blacklist or whitelist).
+	 * If the mode is being toggled, the previous classes/names/packages will be cleared and defaults for the new mode loaded in, otherwise nothing will happen.
+	 * @param inBlacklist Whether to set the filter to be in blacklist mode (vs in whitelist)
+	 * @return a reference to this object
+	 */
+	public JsonFilter setMode(boolean inBlacklist) {
+		return setMode(inBlacklist, true);
+	}
+	
+	/**
+	 * Update the mode of this object (i.e., blacklist or whitelist).
+	 * Nothing will be changed if attempting to set it in the mode it's already in.
+	 * @param inBlacklist Whether to set the filter to be in blacklist mode (vs in whitelist)
+	 * @param loadDefault Whether to reset classes/names/packages to their default (vs just clear)
+	 * @return a reference to this object
+	 */
+	public JsonFilter setMode(boolean inBlacklist, boolean loadDefault) {
+		// do nothing if setting in the already existing mode
+		if (this.inBlacklistMode == inBlacklist) 
+			return this;
+
+		this.inBlacklistMode = inBlacklist;
+		if (loadDefault) {
+			return resetClasses().resetNames().resetPackages();
+		} else  {
+			return clearClasses().clearNames().clearPackages();
+		}
+	}
+	
+	
+	/**
+	 * Various objects are auto-generated and added to your model by AnyLogic in response to certain user-defined objects/properties.
+	 * For example, adding a Plot object with 3 lines set to the 'Value' type (i.e., not referencing a defined dataset)
+	 * 		will autogenerate 3 DataSets with the name structure `_X_expressionN_dataSet_xjal`,
+	 * 		where 'X' is the name of the plot and N is a number between 0 and 2 (for each of the 3 lines).
+	 * This method lets you set whether you want to include those objects in the filter.
+	 * Setting this to false will do its best to ensure only user-added objects are in the outputted JSON.
+	 * 		Specifically, it will exclude any objects suffixed with "_xjal".
+	 * Calling this function with the same value multiple times will have no extra effect.
+	 * 
+	 * @param include Whether to include generated objects
+	 * @return a reference to this object
+	 */
+	public JsonFilter includeGenerated(boolean include) {
+		includeGeneratedObjects = include;
+		return this.update();
+	}
+	
+	
+	/**
+	 * Includes the provided package(s) in the filter.
+	 * When in blacklist mode (default), these will be skipped in the JSON conversion; in whitelist mode, only these will be included.
+	 * Calling this function with the same value multiple times will have no extra effect.
+	 * Note: subpackages are not considered.
+	 * @param pkgs One or more fully qualified package name
+	 * @return a reference to this object
+	 */
+	public JsonFilter includePackages(String... pkgs) {
+		for (String pkg : pkgs)
+			includedPackages.add(pkg);
+		return this.update();
+	}
+	
+	/**
+	 * Includes the provided classes(s) in the filter.
+	 * When in blacklist mode (default), these will be skipped in the JSON conversion; in whitelist mode, only these will be included.
+	 * Calling this function with the same value multiple times will have no extra effect.
+	 * @param classes One or more classes
+	 * @return a reference to this object
+	 */
+	public JsonFilter includeClasses(Class<?>... classes) {
+		for (Class<?> cls : classes)
+			includedClasses.add(cls);
+		return this.update();
+	}
+	
+	/**
+	 * Includes the provided names in the filter.
+	 * When in blacklist mode (default), these will be skipped in the JSON conversion; in whitelist mode, only these will be included.
+	 * Calling this function with the same value multiple times will have no extra effect.
+	 * @param names One or more regex patterns
+	 * @return a reference to this object
+	 */
+	public JsonFilter includeNames(String... names) {
+		for (String name : names)
+			includedNames.add(name);
+		return this.update();
+	}
+	
+	/**
+	 * Excludes the provided package(s) from the filter.
+	 * When in blacklist mode (default), these will be allowed in the JSON conversion; in whitelist mode, these will be prevented.
+	 * Calling this function with the same value multiple times will have no extra effect.
+	 * @param pkgs One or more fully qualified package name
+	 * @return a reference to this object
+	 */
+	public JsonFilter excludePackages(String... pkgs) {
+		for (String pkg : pkgs)
+			includedPackages.remove(pkg);
+		return this.update();
+	}
+	
+	/**
+	 * Excludes the provided classes(s) in the filter.
+	 * When in blacklist mode (default), these will be allowed in the JSON conversion; in whitelist mode, these will be prevented.
+	 * Calling this function with the same value multiple times will have no extra effect.
+	 * @param classes One or more classes
+	 * @return a reference to this object
+	 */
+	public JsonFilter excludeClasses(Class<?>... classes) {
+		for (Class<?> cls : classes)
+			includedClasses.remove(cls);
+		return this.update();
+	}
+	
+	/**
+	 * Excludes the provided names(s) from the filter.
+	 * When in blacklist mode (default), these will be allowed in the JSON conversion; in whitelist mode, these will be prevented.
+	 * Calling this function with the same value multiple times will have no extra effect.
+	 * @param names One or more regex patterns
+	 * @return a reference to this object
+	 */
+	public JsonFilter excludeNames(String... names) {
+		for (String name : names)
+			includedNames.remove(name);
+		return this.update();
+	}
+	
+	/**
+	 * Removes all packages from the current filter.
+	 * When in blacklist mode (default), this will allow ALL packages; in whitelist mode, this will prevent ALL packages.
+	 * This is *NOT* reccomended for blacklist mode (without further intervention), as many AnyLogic objects are not configured to be JSON-serializable.
+	 * @return a reference to this object
+	 */
+	public JsonFilter clearPackages() {
+		includedPackages.clear();
+		return this.update();
+	}
+	
+	/**
+	 * Removes all classes from the current filter (allowing all classes).
+	 * When in blacklist mode (default), this will allow ALL classes; in whitelist mode, this will prevent ALL classes.
+	 * This is *NOT* reccomended for blacklist mode (without further intervention), as many AnyLogic objects are not configured to be JSON-serializable.
+	 * @return a reference to this object
+	 */
+	public JsonFilter clearClasses() {
+		includedClasses.clear();
+		return this.update();
+	}
+	
+	/**
+	 * Removes all names from the current filter (allowing any names).
+	 * When in blacklist mode (default), this will allow ALL names; in whitelist mode, this will prevent ALL names.
+	 * This is *NOT* reccomended for blacklist mode (without further intervention), as many AnyLogic objects are not configured to be JSON-serializable.
+	 * @return a reference to this object
+	 */
+	public JsonFilter clearNames() {
+		includedNames.clear();
+		return this.update();
+	}
+	
+	/**
+	 * Resets the set of packages, reverting to the default set.
+	 * @return a reference to this object
+	 */
+	public JsonFilter resetPackages() {
+		clearPackages();
+		if (inBlacklistMode) {
+			for (String p : defaultBlacklistedPackages)
+				includedPackages.add(p);
+		} else {
+			for (String p : defaultWhitelistedPackages)
+				includedPackages.add(p);
+		}
+		return this.update();
+	}
+	
+	/**
+	 * Resets the set of classes, reverting to the default set.
+	 * @return a reference to this object
+	 */
+	public JsonFilter resetClasses() {
+		clearClasses();
+		if (inBlacklistMode) {
+			for (Class<?> c : defaultBlacklistedClasses)
+				includedClasses.add(c);
+		} else {
+			for (Class<?> c : defaultWhitelistedClasses)
+				includedClasses.add(c);
+		}
+		return this.update();
+	}
+	
+	/**
+	 * Resets the set of names, reverted to the default set.
+	 * @return a reference to this object
+	 */
+	public JsonFilter resetNames() {
+		clearNames();
+		if (inBlacklistMode) {
+			for (String n : defaultBlacklistedNames)
+				includedNames.add(n);
+		} else {
+			for (String n : defaultWhitelistedNames)
+				includedNames.add(n);
+		}
+		return this.update();
+	}
+	
+	private JsonFilter update() {
+		// TODO - do you need to create a new one each time?
+		// TODO - confirm this works as expected
+		parent.setAnnotationIntrospector(new CustomAnnotationIntrospector(this));
+		return this;
+	}
+	
+
+	@Override
+	public String toString() {
+		return String.format("JsonFilter[%s | %s autogen, %s names, %s classes, %s packages]", inBlacklistMode ? "BLACK": "WHITE", includeGeneratedObjects ? "YES":"NO", includedNames.size(), includedClasses.size(), includedPackages.size());
+	}
+
+}]]></Text>
+		</JavaClass>
+	</JavaClasses>
+	<Libraries>
+		<!--   =========   Library   ========  -->
+		<Library>
+			<Id>1665789589643</Id>
+			<Name><![CDATA[JSONifierLib]]></Name>
+			<Description><![CDATA[A simple library for enabling AnyLogic objects to be JSON serializable. 
+After creating an instance of it, use the provided "toJson" and "fromJson" functions.
+It also includes a filter for some customization into what is included when calling "toJson".]]></Description>
+			<AOCEntry>
+				<ActiveObjectClassId>1665787765899</ActiveObjectClassId>
+			</AOCEntry>
+
+			<IconResourceReference>
+				<PackageName><![CDATA[anylogic_jsonifier_library]]></PackageName>
+				<ClassName><![CDATA[jsonifier_16.png]]></ClassName>
+			</IconResourceReference>
+			<VersionMajor>0</VersionMajor>
+			<VersionMinor>1</VersionMinor>
+			<VersionBuild>0</VersionBuild>
+			<Provider><![CDATA[]]></Provider>    
+		</Library>
+	</Libraries>
+	<ModelResources>
+		<Resource>
+			<Path><![CDATA[jsonifier_16.png]]></Path>
+			<ReferencedFromUserCode>false</ReferencedFromUserCode>
+		</Resource>
+	</ModelResources>
+    <RequiredLibraryReference>
+		<LibraryName><![CDATA[com.anylogic.libraries.modules.markup_descriptors]]></LibraryName>
+		<VersionMajor>1</VersionMajor>
+		<VersionMinor>0</VersionMinor>
+		<VersionBuild>0</VersionBuild>
+    </RequiredLibraryReference>
+</Model>
+</AnyLogicWorkspace>
