@@ -1066,6 +1066,7 @@ module.addSerializer(HistogramData.class, new Serializers.Histogram1DSerializer(
 module.addSerializer(Histogram2DData.class, new Serializers.Histogram2DSerializer());
 module.addSerializer(StatisticsDiscrete.class, new Serializers.StatisticsDiscreteSerializer());
 module.addSerializer(StatisticsContinuous.class, new Serializers.StatisticsContinuousSerializer());
+module.addSerializer(Statechart.class, new Serializers.StatechartSerializer());
 mapper.registerModule(module);
 return mapper;]]></Body>
 				</Function>
@@ -1452,7 +1453,6 @@ public class JsonFilter {
 			Font.class,
 			Shape.class,
 			EventOriginator.class,
-			Statechart.class,
 			IStatechartState.class,
 			AbstractLinkToAgent.class,
 			Scale.class,
@@ -2124,6 +2124,18 @@ public class Serializers {
 	    		.forEach(s -> {try {
 	    			jgen.writeNumberField(s[0], Double.valueOf(s[1].replaceAll(",", "")));
 	    		} catch (IOException e) {}});
+	        jgen.writeEndObject();
+	    }
+	}
+	
+	public static class StatechartSerializer extends MyStdSerializer<Statechart> {
+	    @Override
+	    public void serialize(
+	    		Statechart value, JsonGenerator jgen, SerializerProvider provider) 
+	      throws IOException, JsonProcessingException {
+	        jgen.writeStartObject();
+	        jgen.writeStringField("statechart_name", value.getName());
+	        jgen.writeObjectField("active_state", Map.of("full", value.getFullState(), "simple", value.getActiveSimpleState().name()));
 	        jgen.writeEndObject();
 	    }
 	}
