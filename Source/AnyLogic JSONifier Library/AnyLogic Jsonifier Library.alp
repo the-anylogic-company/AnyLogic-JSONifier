@@ -1085,6 +1085,7 @@ writeFile(file, output);]]></Body>
 					<ShowLabel>true</ShowLabel>
 					<Body><![CDATA[ObjectMapper mapper = new ObjectMapper().configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
 mapper.addMixInAnnotations(Event.class, SharedSuppressionMixIn.class); // TODO change to more generic parent type?
+mapper.addMixInAnnotations(Port.class, PortSuppressionMixIn.class);
 
 SimpleModule module = new SimpleModule();
 module.addSerializer(DataSet.class, new Serializers.DataSetSerializer());
@@ -2212,6 +2213,41 @@ public interface SharedSuppressionMixIn
 	@JsonIgnore
 	public Agent getAgent();
 	
+	
+	
+}]]></Text>
+		</JavaClass>
+		<!--   =========   Java Class   ========  -->
+		<JavaClass>
+			<Id>1678494803375</Id>
+			<Name><![CDATA[PortSuppressionMixIn]]></Name>
+			<Text><![CDATA[import com.fasterxml.jackson.annotation.JsonIgnore;
+
+public interface PortSuppressionMixIn extends SharedSuppressionMixIn
+{
+	@JsonIgnore
+	public String getName();
+	
+	@JsonIgnore
+	public String getFullName();
+	
+	@JsonIgnore
+	public FlowchartBlock getFlowchartBlockRepresentative();
+	
+	@JsonIgnore
+	public FlowchartBlock getFlowchartBlockRepresentative(Agent agent);
+	
+	@JsonIgnore
+	public List getStatechartLinks();
+	
+	@JsonIgnore
+	public List getFlatLinks();
+	
+	@JsonIgnore
+	public List getUpLinks();
+	
+	@JsonIgnore
+	public List getDownLinks();
 }]]></Text>
 		</JavaClass>
 	</JavaClasses>
