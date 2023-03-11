@@ -1435,7 +1435,8 @@ public class JsonFilter {
 			Histogram2D.Appearance.class,
 			Chart2DPlot.Appearance.class,
 			SDIntegrationManager.class,
-			LinkToAgentAnimationSettings.class
+			LinkToAgentAnimationSettings.class,
+			Port.class
 			));
 	
 	/**
@@ -2112,7 +2113,6 @@ public class Serializers {
 	    		Statechart value, JsonGenerator jgen, SerializerProvider provider) 
 	      throws IOException, JsonProcessingException {
 	        jgen.writeStartObject();
-	        jgen.writeStringField("statechart_name", value.getName());
 	        jgen.writeObjectField("active_state", Map.of("full", value.getFullState(), "simple", value.getActiveSimpleState().name()));
 	        jgen.writeEndObject();
 	    }
