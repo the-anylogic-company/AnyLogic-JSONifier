@@ -58,7 +58,9 @@ import java.io.FileReader;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.InvalidPathException;
-import com.fasterxml.jackson.databind.module.SimpleModule;]]></Import>
+import com.fasterxml.jackson.databind.module.SimpleModule;
+import java.lang.reflect.Type;
+import java.util.stream.Collectors;]]></Import>
 			<Generic>false</Generic>
 			<GenericParameter>
 				<Id>1665787765897</Id>
@@ -196,6 +198,30 @@ import com.fasterxml.jackson.databind.module.SimpleModule;]]></Import>
 						<CollectionClass><![CDATA[LinkedHashSet]]></CollectionClass>
 						<ElementClass><![CDATA[String]]></ElementClass>
 						<ValueElementClass><![CDATA[String]]></ValueElementClass>
+					</Properties>
+
+				</Variable>
+				<Variable Class="CollectionVariable">
+					<Id>1678491140331</Id>
+					<Name><![CDATA[serializedClasses]]></Name>
+					<X>230</X><Y>520</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Properties SaveInSnapshot="true" AccessType="private" StaticVariable="true">
+						<CollectionClass><![CDATA[ArrayList]]></CollectionClass>
+						<ElementClass><![CDATA[Class<?>]]></ElementClass>
+						<ValueElementClass><![CDATA[String]]></ValueElementClass>
+						<CollectionInitializer Class="CodeValue">
+							<Code><![CDATA[Arrays.stream(Serializers.class.getDeclaredClasses())
+        .filter(innerClass -> innerClass != Serializers.MyStdSerializer.class)
+        .map(innerClass -> {
+            ParameterizedType parameterizedType = (ParameterizedType) innerClass.getGenericSuperclass();
+            return (Class<?>) parameterizedType.getActualTypeArguments()[0];
+        })
+        .collect(Collectors.toList())]]></Code>
+						</CollectionInitializer>
 					</Properties>
 
 				</Variable>
@@ -417,11 +443,7 @@ return map;]]></Body>
 					<ReturnType><![CDATA[ObjectAgentType]]></ReturnType>
 					<Id>1665787820182</Id>
 					<Name><![CDATA[agentType]]></Name>
-					<Description><![CDATA[Classifies an object based on its underlying class: <br>
-`0` for entirely Java types,<br>
-`1` for single agents,<br>
-`2` for agent populations,<br>
-`3` for Java collections with agent elements]]></Description>
+					<Description><![CDATA[Classifies an object based on its underlying class and how it serialization needs to happen.]]></Description>
 					<X>230</X><Y>430</Y>
 					<Label><X>10</X><Y>0</Y></Label>
 					<PublicFlag>false</PublicFlag>
@@ -431,7 +453,11 @@ return map;]]></Body>
 						<Name><![CDATA[agentObj]]></Name>
 						<Type><![CDATA[Object]]></Type>
 					</Parameter>
-					<Body><![CDATA[// TODO does type-3 return as expected? might need to use getComponentType/instanceof
+					<Body><![CDATA[// if we've registered serializers, can just return as a normal java object
+if (serializedClasses.stream().anyMatch(cls -> cls.isAssignableFrom(agentObj.getClass())))
+	return ObjectAgentType.JAVA;
+
+// TODO does type-3 return as expected? might need to use getComponentType/instanceof
 if (agentObj instanceof Agent)
 	return ObjectAgentType.AGENT_SINGLE;
 else if (agentObj instanceof AgentArrayList)
