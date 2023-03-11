@@ -1067,6 +1067,7 @@ module.addSerializer(Histogram2DData.class, new Serializers.Histogram2DSerialize
 module.addSerializer(StatisticsDiscrete.class, new Serializers.StatisticsDiscreteSerializer());
 module.addSerializer(StatisticsContinuous.class, new Serializers.StatisticsContinuousSerializer());
 module.addSerializer(Statechart.class, new Serializers.StatechartSerializer());
+module.addSerializer(FlowchartBlock.class, new Serializers.FlowchartBlockSerializer());
 mapper.registerModule(module);
 return mapper;]]></Body>
 				</Function>
@@ -1992,6 +1993,8 @@ import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import java.util.stream.IntStream;
+import java.util.stream.Collectors;
+import java.util.regex.Pattern;
 
 public class Serializers {
 	public static class MyStdSerializer<T> extends StdSerializer<T> {
@@ -2139,6 +2142,35 @@ public class Serializers {
 	        jgen.writeEndObject();
 	    }
 	}
+	
+	public static class FlowchartBlockSerializer extends MyStdSerializer<FlowchartBlock> {
+		@Override
+	    public void serialize(
+	    		FlowchartBlock value, JsonGenerator jgen, SerializerProvider provider) 
+	      throws IOException, JsonProcessingException {
+			jgen.writeStartObject();
+			// idky but some block's type are inner classes, so are shown as "<user_model_package>.<AgentType>$<number>" (e.g., mymodel.Main$1)
+			// 	and in these cases, the simple name is empty...
+			// The toString of built-in blocks seem to reliably have the type in the toString, so use that in these cases.	
+	        jgen.writeStringField("type", value.getClass().getSimpleName().isEmpty()
+							? Pattern.compile("[^:]+:\\s*(.*?)\\s.+", Pattern.DOTALL).matcher(value.toString()).replaceFirst("$1")
+							: value.getClass().getSimpleName());
+	        jgen.writeObjectField("parameters",
+	        		// wonky collection is to allow non-null values
+	        		Arrays.stream(value.getParameterNames()).collect(HashMap::new, (map,name)->map.put(name, value.getParameter(name)), HashMap::putAll)
+	        );
+	        jgen.writeObjectField("ports",
+	        		// xjal check in filter omits internal ports used in messaging
+	        		Arrays.stream(value.getClass().getFields()).filter(f -> !f.getName().endsWith("_xjal") && f.getType().isAssignableFrom(FlowchartMappedPort.class))
+		        	.collect(
+			        		Collectors.toMap(f -> f.getName(), f -> {try { return ((FlowchartMappedPort)f.get(value)).count(); } catch (Exception e) {return -1;}})
+			        		)
+	        );
+	        jgen.writeEndObject();
+	    }
+	}
+}]]></Text>
+		</JavaClass>
 }]]></Text>
 		</JavaClass>
 	</JavaClasses>
