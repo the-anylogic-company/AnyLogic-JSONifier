@@ -1058,9 +1058,9 @@ writeFile(file, output);]]></Body>
 					<PresentationFlag>true</PresentationFlag>
 					<ShowLabel>true</ShowLabel>
 					<Body><![CDATA[ObjectMapper mapper = new ObjectMapper().configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
-SimpleModule module = new SimpleModule();
+mapper.addMixInAnnotations(Event.class, SharedSuppressionMixIn.class); // TODO change to more generic parent type?
 
-Serializers s = new Serializers();
+SimpleModule module = new SimpleModule();
 module.addSerializer(DataSet.class, new Serializers.DataSetSerializer());
 module.addSerializer(HistogramData.class, new Serializers.Histogram1DSerializer());
 module.addSerializer(Histogram2DData.class, new Serializers.Histogram2DSerializer());
@@ -2171,6 +2171,21 @@ public class Serializers {
 	}
 }]]></Text>
 		</JavaClass>
+		<!--   =========   Java Class   ========  -->
+		<JavaClass>
+			<Id>1678490259125</Id>
+			<Name><![CDATA[SharedSuppressionMixIn]]></Name>
+			<Text><![CDATA[import com.fasterxml.jackson.annotation.JsonIgnore;
+
+public interface SharedSuppressionMixIn
+{
+	
+	@JsonIgnore
+    public Agent getActiveObject();
+	
+	@JsonIgnore
+	public Agent getAgent();
+	
 }]]></Text>
 		</JavaClass>
 	</JavaClasses>
