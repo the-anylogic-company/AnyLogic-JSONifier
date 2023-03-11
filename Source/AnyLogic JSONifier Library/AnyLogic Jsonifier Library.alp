@@ -179,7 +179,7 @@ import java.util.stream.Collectors;]]></Import>
 					<PublicFlag>false</PublicFlag>
 					<PresentationFlag>true</PresentationFlag>
 					<ShowLabel>true</ShowLabel>
-					<Properties SaveInSnapshot="true" Constant="false" AccessType="public" StaticVariable="false">
+					<Properties SaveInSnapshot="true" Constant="false" AccessType="public" StaticVariable="true">
 						<Type><![CDATA[JsonFilter]]></Type>        
 						<InitialValue Class="CodeValue">
 							<Code><![CDATA[// initialized in addtl class code]]></Code>
@@ -290,7 +290,7 @@ try {
 }
 return output;]]></Body>
 				</Function>
-				<Function AccessType="default" StaticFunction="false">
+				<Function AccessType="default" StaticFunction="true">
 					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
 					<ReturnType><![CDATA[HashMap<String, Object>]]></ReturnType>
 					<Id>1665787820180</Id>
@@ -314,6 +314,7 @@ return output;]]></Body>
 						<Type><![CDATA[HashSet<Object>]]></Type>
 					</Parameter>
 					<Body><![CDATA[//traceln("Converting agent '%s' of type: %s", agent.getName(), agent.getClass());
+if (seenAgents == null) seenAgents = new HashSet<Object>();
 
 // field mapping, name to value
 HashMap<String, Object> map = new HashMap<>();
@@ -467,7 +468,7 @@ else if (agentObj instanceof Collection
 	return ObjectAgentType.AGENT_COLLECTION;
 return ObjectAgentType.JAVA;]]></Body>
 				</Function>
-				<Function AccessType="default" StaticFunction="false">
+				<Function AccessType="default" StaticFunction="true">
 					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
 					<ReturnType><![CDATA[ArrayList<HashMap<String, Object>>]]></ReturnType>
 					<Id>1665787820184</Id>
@@ -492,6 +493,7 @@ return ObjectAgentType.JAVA;]]></Body>
 					</Parameter>
 					<Body><![CDATA[//traceln("Converting pop of size %s, type: %s", agentPop.size(), agentPop.getClass());
 //traceln("=> %s", jsonFilter.skipJsonifying(agentPop.get(0).getClass()));
+if (seenAgents == null) seenAgents = new HashSet<Object>();
 
 // convert each individual agent in the population into a hashmap
 ArrayList<HashMap<String, Object>> popList = new ArrayList<>();
@@ -500,12 +502,12 @@ if (agentPop.size() > 0 && jsonFilter.skipJsonifying(agentPop.get(0).getClass())
 	return popList;
 }
 
-agentPop.forEach(a -> {
+for (Agent a : agentPop) {
 	if (!seenAgents.contains(a)) {
 		seenAgents.add(a);
 		popList.add( agentToMap(a, includeNullFields, seenAgents) );
 	}
-});
+};
 return popList;]]></Body>
 				</Function>
 				<Function AccessType="public" StaticFunction="false">
@@ -531,74 +533,15 @@ Note that agents and agent populations are handled manually due to a recursive i
 						<Name><![CDATA[prettyprint]]></Name>
 						<Type><![CDATA[boolean]]></Type>
 					</Parameter>
-					<Body><![CDATA[ObjectAgentType type = agentType(object);
-String output = null;
-HashSet<Object> seenAgents = new HashSet<>(); // used in AL types
-switch (type) {
-	case JAVA:
-	// standard types use basic object mapper
-		try {
-			output = prettyprint
-						? objmapper.writerWithDefaultPrettyPrinter().writeValueAsString(object)
-						: objmapper.writeValueAsString(object);
-		} catch (JsonProcessingException e) {
-			e.printStackTrace();
-		}
-		break;
-	case AGENT_SINGLE:
-	// singleton agents use specialized function to convert to standard type
-		seenAgents.add(object);
-		HashMap<String, Object> map = agentToMap((Agent)object, false, seenAgents);
-		output = toJson(map, prettyprint);
-		break;
-	case AGENT_POPULATION:
-	// agent-populations convert to a standard list before outputting
-		seenAgents.add(object);
-		AgentArrayList<Agent> pop = (AgentArrayList) object;
-		ArrayList<?> popList = agentPopToList(pop, false, seenAgents);
-		output = toJson(popList, prettyprint);
-		break;
-	case AGENT_COLLECTION:
-	// java list with agent-contents; 
-	// 	use specialized functions for content and manually construct list
-		Collection collection = (Collection)object;
-		String[] list = (String[])collection.stream()
-			.map(a -> toJson(a, prettyprint))
-			.toArray(String[]::new);
-		String joiner = prettyprint ? ", " : ",";
-		output = "[" + String.join(joiner, list) + "]";
-		break;
-}
-return output;
-
-/*
-if (!type.equals(ObjectAgentType.JAVA)) { // agent-ish types
-	if (type.equals(ObjectAgentType.AGENT_COLLECTION)) { // Java list containing agents
-		// XXX - this IS callled when toJson(population) but NOT when toJson(agent with population inside)?!
-		// Note: apprently when this is called, subelements are a hashmap...?
-		Collection collection = (Collection)object;
-		String[] list = (String[])collection.stream()
-			.map(a -> toJson(a, prettyprint))
-			.toArray(String[]::new);
-		String joiner = prettyprint ? ", " : ",";
-		output = "[" + String.join(joiner, list) + "]";
-	} else { // single agent or pop of agents
-		output = toAgentJson(object, false, prettyprint);
-	}
-	return output;
-}
-
-// All other types should use object mapper
+					<Body><![CDATA[String output = null;
 try {
-	if (prettyprint)
-		output = objmapper.writerWithDefaultPrettyPrinter().writeValueAsString(object);
-	else
-		output = objmapper.writeValueAsString(object);
+	output = prettyprint
+				? objmapper.writerWithDefaultPrettyPrinter().writeValueAsString(object)
+				: objmapper.writeValueAsString(object);
 } catch (JsonProcessingException e) {
 	e.printStackTrace();
 }
-return output;
-*/]]></Body>
+return output;]]></Body>
 				</Function>
 				<Function AccessType="default" StaticFunction="false">
 					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
@@ -1095,6 +1038,8 @@ module.addSerializer(StatisticsDiscrete.class, new Serializers.StatisticsDiscret
 module.addSerializer(StatisticsContinuous.class, new Serializers.StatisticsContinuousSerializer());
 module.addSerializer(Statechart.class, new Serializers.StatechartSerializer());
 module.addSerializer(FlowchartBlock.class, new Serializers.FlowchartBlockSerializer());
+module.addSerializer(Agent.class, new Serializers.AgentSerializer());
+module.addSerializer(AgentList.class, new Serializers.AgentListSerializer());
 mapper.registerModule(module);
 return mapper;]]></Body>
 				</Function>
@@ -2022,6 +1967,9 @@ import com.fasterxml.jackson.databind.SerializerProvider;
 import java.util.stream.IntStream;
 import java.util.stream.Collectors;
 import java.util.regex.Pattern;
+import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Modifier;
 
 public class Serializers {
 	public static class MyStdSerializer<T> extends StdSerializer<T> {
@@ -2195,6 +2143,35 @@ public class Serializers {
 	        );
 	        jgen.writeEndObject();
 	    }
+	}
+	
+	public static class AgentSerializer extends MyStdSerializer<Agent> {
+		@Override
+	    public void serialize(
+	    		Agent value, JsonGenerator jgen, SerializerProvider provider) 
+	      throws IOException, JsonProcessingException {
+			
+			jgen.writeStartObject();
+			HashMap<String, Object> map = ALJsonifier.agentToMap(value, true, null);
+			for (String key : map.keySet()) {
+				Object val = map.get(key);
+				jgen.writeObjectField(key, val);
+			}
+			jgen.writeEndObject();
+		}
+	}
+	
+	public static class AgentListSerializer extends MyStdSerializer<AgentList> {
+		@Override
+	    public void serialize(
+	    		AgentList value, JsonGenerator jgen, SerializerProvider provider) 
+	      throws IOException, JsonProcessingException {
+			jgen.writeStartArray();
+			for (int i = 0; i < value.size(); i++) {
+				jgen.writeObject(value.get(i));
+			}
+			jgen.writeEndArray();
+		}
 	}
 }]]></Text>
 		</JavaClass>
