@@ -38,110 +38,7 @@ private enum ObjectAgentType {
 	AGENT_SINGLE, // single agent
 	AGENT_POPULATION, // anylogic-population (of agents)
 	AGENT_COLLECTION // java collection with agent-typed components
-}
-
-/**
-Needed because the default serializer cuts off with a certain limit.
-E.g., "plainDataTable" : [ [ 0.0, 5.0 ], [ 1.0, 5.0 ], [ 2.0, 5.0 ], ..., [ 999.0, 4.0 ], [ "... 1361 more items" ] ],
-**/
-static HashMap<String, Object> serializeDataSet(DataSet ds) {
-	HashMap<String, Object> dataTable = new HashMap<>();
-	dataTable.put("xmin", ds.getXMin());
-	dataTable.put("xmean", ds.getXMean());
-	dataTable.put("xmedian", ds.getXMedian());
-	dataTable.put("xmax", ds.getXMax());
-	dataTable.put("ymin", ds.getYMin());
-	dataTable.put("ymean", ds.getYMean());
-	dataTable.put("ymedian", ds.getYMedian());
-	dataTable.put("ymax", ds.getYMax());
-	dataTable.put("version", ds.getVersion());
-	List<double[]> values = new ArrayList<>();
-	IntStream.range(0, ds.size()).forEach(i -> values.add(new double[]{ds.getX(i), ds.getY(i)}));
-	dataTable.put("plainDataTable", values);
-	return dataTable;
-}
-
-
-static HashMap<String, Object> serializeHistogram1DData(HistogramData h1data) {
-	HashMap<String, Object> dataTable = new HashMap<>();
-
-	int count = h1data.count();
-	dataTable.put("count", count);
-	// Follow similar structure as in ALCloud: User can derive ranges based on min X and interval width
-	dataTable.put("lowerBound", h1data.getXMin());
-	dataTable.put("intervalWidth", h1data.getIntervalWidth());
-	int[] hits = IntStream.range(0, h1data.getNumberOfIntervals())
-			.map(i -> Math.round((float)h1data.getPDF(i)*count)).toArray();
-	dataTable.put("hits", hits);
-	// HSimpleData = User set explicit min/max. There may be data outside this range, so add counts of lower/upper range of interval
-	if (h1data instanceof HistogramSimpleData) {
-		HistogramSimpleData hdataSimple = (HistogramSimpleData) h1data;
-		dataTable.put("hitsOutLow", Math.round((float)hdataSimple.getPDFOutsideLow()*count));
-		dataTable.put("hitsOutHigh", Math.round((float)hdataSimple.getPDFOutsideHigh()*count));
-	}
-	// Add in other useful stats available from histogram
-	HashMap<String, Double> dtableStats = new HashMap<>();
-	dtableStats.put("min", h1data.min());
-	dtableStats.put("max", h1data.max());
-	dtableStats.put("mean", h1data.mean());
-	dtableStats.put("deviation", h1data.deviation());
-	dataTable.put("statistics", dtableStats);
-	
-	return dataTable;
-	
-}
-
-static HashMap<String, Object> serializeHistogram2DData(Histogram2DData h2data) {
-	HashMap<String, Object> dataTable = new HashMap<>();
-
-	// Follow similar structure as in ALCloud; user can derive interval size, etc. from available data
-	int nX = h2data.getNumberOfXIntervals();
-	int nY = h2data.getNumberOfYIntervals();
-	int[][] hits = new int[nY][nX];
-	int[] hitsOutLow = new int[nX];
-	int[] hitsOutHigh = new int[nX];
-	for (int x = 0; x < nX; x++) {
-		int xcount = h2data.count(x);
-		hitsOutLow[x] = Math.round((float)h2data.getPDFOutsideLow(x)*xcount);
-		hitsOutHigh[x] = Math.round((float)h2data.getPDFOutsideHigh(x)*xcount);
-		for (int y = 0; y < nY; y++) {
-			hits[y][x] = Math.round((float)h2data.getPDF(x, y)*xcount);
-		}
-	}
-	dataTable.put("hits", hits);
-	dataTable.put("hitsOutLow", hitsOutLow);
-	dataTable.put("hitsOutHigh", hitsOutHigh);
-	dataTable.put("xMin", h2data.getXMin());
-	dataTable.put("xMax", h2data.getXMax());
-	dataTable.put("yMin", h2data.getYMin());
-	dataTable.put("yMax", h2data.getYMax());
-	return dataTable;
-}
-
-static HashMap<String, Object> serializeStatisticsDiscrete(StatisticsDiscrete stat) {
-	String[] statRows = stat.toString().split("\n");
-	HashMap<String, Object> statMap = new HashMap<>();
-	Arrays.stream(statRows)
-		.map(s -> s.strip().split("\t"))
-		.forEach(s -> statMap.put(s[0], Double.valueOf(s[1].replaceAll(",", ""))));
-	return statMap;
-}
-
-static HashMap<String, Object> serializeStatisticsContinuous(StatisticsContinuous stat) {
-	String[] statRows = stat.toString().split("\n");
-	HashMap<String, Object> statMap = new HashMap<>();
-	Arrays.stream(statRows)
-		.map(s -> s.strip().split("\t"))
-		.forEach(s -> statMap.put(s[0], Double.valueOf(s[1].replaceAll(",", ""))));
-	return statMap;
-}
-
-static HashMap<String, Object> serializeHistogramApperance(Histogram.Appearance app) {
-	HashMap<String, Object> appMap = new HashMap<>();
-	appMap.put("string", app.toString());
-	return appMap;
-}
-]]></AdditionalClassCode>
+}]]></AdditionalClassCode>
 			<ClientAreaTopLeft><X>0</X><Y>0</Y></ClientAreaTopLeft>
 			<Import><![CDATA[import java.io.IOException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -160,7 +57,10 @@ import java.util.Scanner;
 import java.io.FileReader;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.nio.file.InvalidPathException;]]></Import>
+import java.nio.file.InvalidPathException;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+import java.lang.reflect.Type;
+import java.util.stream.Collectors;]]></Import>
 			<Generic>false</Generic>
 			<GenericParameter>
 				<Id>1665787765897</Id>
@@ -267,19 +167,19 @@ import java.nio.file.InvalidPathException;]]></Import>
 					<Properties SaveInSnapshot="true" Constant="false" AccessType="public" StaticVariable="true">
 						<Type><![CDATA[ObjectMapper]]></Type>        
 						<InitialValue Class="CodeValue">
-							<Code><![CDATA[new ObjectMapper().configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)]]></Code>
+							<Code><![CDATA[createMapper()]]></Code>
 						</InitialValue>
 					</Properties>
 				</Variable>
 				<Variable Class="PlainVariable">
 					<Id>1665787820202</Id>
 					<Name><![CDATA[jsonFilter]]></Name>
-					<X>70</X><Y>90</Y>
+					<X>70</X><Y>110</Y>
 					<Label><X>10</X><Y>0</Y></Label>
 					<PublicFlag>false</PublicFlag>
 					<PresentationFlag>true</PresentationFlag>
 					<ShowLabel>true</ShowLabel>
-					<Properties SaveInSnapshot="true" Constant="false" AccessType="public" StaticVariable="false">
+					<Properties SaveInSnapshot="true" Constant="false" AccessType="public" StaticVariable="true">
 						<Type><![CDATA[JsonFilter]]></Type>        
 						<InitialValue Class="CodeValue">
 							<Code><![CDATA[// initialized in addtl class code]]></Code>
@@ -301,6 +201,30 @@ import java.nio.file.InvalidPathException;]]></Import>
 					</Properties>
 
 				</Variable>
+				<Variable Class="CollectionVariable">
+					<Id>1678491140331</Id>
+					<Name><![CDATA[serializedClasses]]></Name>
+					<X>230</X><Y>520</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Properties SaveInSnapshot="true" AccessType="private" StaticVariable="true">
+						<CollectionClass><![CDATA[ArrayList]]></CollectionClass>
+						<ElementClass><![CDATA[Class<?>]]></ElementClass>
+						<ValueElementClass><![CDATA[String]]></ValueElementClass>
+						<CollectionInitializer Class="CodeValue">
+							<Code><![CDATA[Arrays.stream(Serializers.class.getDeclaredClasses())
+        .filter(innerClass -> innerClass != Serializers.MyStdSerializer.class)
+        .map(innerClass -> {
+            ParameterizedType parameterizedType = (ParameterizedType) innerClass.getGenericSuperclass();
+            return (Class<?>) parameterizedType.getActualTypeArguments()[0];
+        })
+        .collect(Collectors.toList())]]></Code>
+						</CollectionInitializer>
+					</Properties>
+
+				</Variable>
 			</Variables>
 			<Functions>
 				<Function AccessType="public" StaticFunction="false">
@@ -312,7 +236,7 @@ import java.nio.file.InvalidPathException;]]></Import>
 Note that agents and agent populations are handled manually due to a recursive issue.<br>
 @param object Any data type that can be converted to JSON<br>
 @return The JSON form of the given object, or `null` if an error was encountered<br>]]></Description>
-					<X>250</X><Y>90</Y>
+					<X>250</X><Y>100</Y>
 					<Label><X>10</X><Y>0</Y></Label>
 					<PublicFlag>false</PublicFlag>
 					<PresentationFlag>true</PresentationFlag>
@@ -366,7 +290,7 @@ try {
 }
 return output;]]></Body>
 				</Function>
-				<Function AccessType="default" StaticFunction="false">
+				<Function AccessType="default" StaticFunction="true">
 					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
 					<ReturnType><![CDATA[HashMap<String, Object>]]></ReturnType>
 					<Id>1665787820180</Id>
@@ -390,6 +314,7 @@ return output;]]></Body>
 						<Type><![CDATA[HashSet<Object>]]></Type>
 					</Parameter>
 					<Body><![CDATA[//traceln("Converting agent '%s' of type: %s", agent.getName(), agent.getClass());
+if (seenAgents == null) seenAgents = new HashSet<Object>();
 
 // field mapping, name to value
 HashMap<String, Object> map = new HashMap<>();
@@ -492,8 +417,6 @@ for (Field field : fields) {
 			}
 		}
 		//traceln("\t%s: %s", name, value.getClass());
-		// try custom serializer
-		value = customClassSerializer(value);
 		map.put(name, value);
 	} catch (IllegalAccessException e) {
 		//traceln("\terrorred!!!!!");
@@ -521,11 +444,7 @@ return map;]]></Body>
 					<ReturnType><![CDATA[ObjectAgentType]]></ReturnType>
 					<Id>1665787820182</Id>
 					<Name><![CDATA[agentType]]></Name>
-					<Description><![CDATA[Classifies an object based on its underlying class: <br>
-`0` for entirely Java types,<br>
-`1` for single agents,<br>
-`2` for agent populations,<br>
-`3` for Java collections with agent elements]]></Description>
+					<Description><![CDATA[Classifies an object based on its underlying class and how it serialization needs to happen.]]></Description>
 					<X>230</X><Y>430</Y>
 					<Label><X>10</X><Y>0</Y></Label>
 					<PublicFlag>false</PublicFlag>
@@ -535,7 +454,11 @@ return map;]]></Body>
 						<Name><![CDATA[agentObj]]></Name>
 						<Type><![CDATA[Object]]></Type>
 					</Parameter>
-					<Body><![CDATA[// TODO does type-3 return as expected? might need to use getComponentType/instanceof
+					<Body><![CDATA[// if we've registered serializers, can just return as a normal java object
+if (serializedClasses.stream().anyMatch(cls -> cls.isAssignableFrom(agentObj.getClass())))
+	return ObjectAgentType.JAVA;
+
+// TODO does type-3 return as expected? might need to use getComponentType/instanceof
 if (agentObj instanceof Agent)
 	return ObjectAgentType.AGENT_SINGLE;
 else if (agentObj instanceof AgentArrayList)
@@ -545,7 +468,7 @@ else if (agentObj instanceof Collection
 	return ObjectAgentType.AGENT_COLLECTION;
 return ObjectAgentType.JAVA;]]></Body>
 				</Function>
-				<Function AccessType="default" StaticFunction="false">
+				<Function AccessType="default" StaticFunction="true">
 					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
 					<ReturnType><![CDATA[ArrayList<HashMap<String, Object>>]]></ReturnType>
 					<Id>1665787820184</Id>
@@ -570,6 +493,7 @@ return ObjectAgentType.JAVA;]]></Body>
 					</Parameter>
 					<Body><![CDATA[//traceln("Converting pop of size %s, type: %s", agentPop.size(), agentPop.getClass());
 //traceln("=> %s", jsonFilter.skipJsonifying(agentPop.get(0).getClass()));
+if (seenAgents == null) seenAgents = new HashSet<Object>();
 
 // convert each individual agent in the population into a hashmap
 ArrayList<HashMap<String, Object>> popList = new ArrayList<>();
@@ -578,12 +502,12 @@ if (agentPop.size() > 0 && jsonFilter.skipJsonifying(agentPop.get(0).getClass())
 	return popList;
 }
 
-agentPop.forEach(a -> {
+for (Agent a : agentPop) {
 	if (!seenAgents.contains(a)) {
 		seenAgents.add(a);
 		popList.add( agentToMap(a, includeNullFields, seenAgents) );
 	}
-});
+};
 return popList;]]></Body>
 				</Function>
 				<Function AccessType="public" StaticFunction="false">
@@ -609,75 +533,15 @@ Note that agents and agent populations are handled manually due to a recursive i
 						<Name><![CDATA[prettyprint]]></Name>
 						<Type><![CDATA[boolean]]></Type>
 					</Parameter>
-					<Body><![CDATA[ObjectAgentType type = agentType(object);
-String output = null;
-HashSet<Object> seenAgents = new HashSet<>(); // used in AL types
-switch (type) {
-	case JAVA:
-	// standard types use basic object mapper (after passing thru custom serializer)
-		object = customClassSerializer(object);
-		try {
-			output = prettyprint
-						? objmapper.writerWithDefaultPrettyPrinter().writeValueAsString(object)
-						: objmapper.writeValueAsString(object);
-		} catch (JsonProcessingException e) {
-			e.printStackTrace();
-		}
-		break;
-	case AGENT_SINGLE:
-	// singleton agents use specialized function to convert to standard type
-		seenAgents.add(object);
-		HashMap<String, Object> map = agentToMap((Agent)object, false, seenAgents);
-		output = toJson(map, prettyprint);
-		break;
-	case AGENT_POPULATION:
-	// agent-populations convert to a standard list before outputting
-		seenAgents.add(object);
-		AgentArrayList<Agent> pop = (AgentArrayList) object;
-		ArrayList<?> popList = agentPopToList(pop, false, seenAgents);
-		output = toJson(popList, prettyprint);
-		break;
-	case AGENT_COLLECTION:
-	// java list with agent-contents; 
-	// 	use specialized functions for content and manually construct list
-		Collection collection = (Collection)object;
-		String[] list = (String[])collection.stream()
-			.map(a -> toJson(a, prettyprint))
-			.toArray(String[]::new);
-		String joiner = prettyprint ? ", " : ",";
-		output = "[" + String.join(joiner, list) + "]";
-		break;
-}
-return output;
-
-/*
-if (!type.equals(ObjectAgentType.JAVA)) { // agent-ish types
-	if (type.equals(ObjectAgentType.AGENT_COLLECTION)) { // Java list containing agents
-		// XXX - this IS callled when toJson(population) but NOT when toJson(agent with population inside)?!
-		// Note: apprently when this is called, subelements are a hashmap...?
-		Collection collection = (Collection)object;
-		String[] list = (String[])collection.stream()
-			.map(a -> toJson(a, prettyprint))
-			.toArray(String[]::new);
-		String joiner = prettyprint ? ", " : ",";
-		output = "[" + String.join(joiner, list) + "]";
-	} else { // single agent or pop of agents
-		output = toAgentJson(object, false, prettyprint);
-	}
-	return output;
-}
-
-// All other types should use object mapper
+					<Body><![CDATA[String output = null;
 try {
-	if (prettyprint)
-		output = objmapper.writerWithDefaultPrettyPrinter().writeValueAsString(object);
-	else
-		output = objmapper.writeValueAsString(object);
+	output = prettyprint
+				? objmapper.writerWithDefaultPrettyPrinter().writeValueAsString(object)
+				: objmapper.writeValueAsString(object);
 } catch (JsonProcessingException e) {
 	e.printStackTrace();
 }
-return output;
-*/]]></Body>
+return output;]]></Body>
 				</Function>
 				<Function AccessType="default" StaticFunction="false">
 					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
@@ -871,49 +735,6 @@ try {
 } catch (Exception e) {
 	e.printStackTrace();
 }]]></Body>
-				</Function>
-				<Function AccessType="default" StaticFunction="true">
-					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
-					<ReturnType><![CDATA[Object]]></ReturnType>
-					<Id>1665787820196</Id>
-					<Name><![CDATA[customClassSerializer]]></Name>
-					<Description><![CDATA[Tries to convert the given object to a serializable format that Jackson can understand.
-@param object The variable to be converted
-@return a generic object that should be serializable (or the original object if not handled)]]></Description>
-					<X>260</X><Y>520</Y>
-					<Label><X>10</X><Y>0</Y></Label>
-					<PublicFlag>false</PublicFlag>
-					<PresentationFlag>true</PresentationFlag>
-					<ShowLabel>true</ShowLabel>
-					<Parameter>
-						<Name><![CDATA[object]]></Name>
-						<Type><![CDATA[Object]]></Type>
-					</Parameter>
-					<Body><![CDATA[if (object == null)
-	return null;
-
-if (object.getClass().isArray()) {
-	// no package names, just return object now
-	return object;
-}
-
-// quick-check since all currently handled types are analysis objects
-if (!object.getClass().getPackage().getName().equals("com.anylogic.engine.analysis")) {
-	return object;
-}
-
-if (object instanceof DataSet) {
-	return serializeDataSet((DataSet)object);
-} else if (object instanceof StatisticsDiscrete) {
-	return serializeStatisticsDiscrete((StatisticsDiscrete)object);
-} else if (object instanceof StatisticsContinuous) {
-	return serializeStatisticsContinuous((StatisticsContinuous)object);
-} else if (object instanceof HistogramData) {
-	return serializeHistogram1DData((HistogramData)object);
-} else if (object instanceof Histogram2DData) {
-	return serializeHistogram2DData((Histogram2DData)object);
-}
-return object;]]></Body>
 				</Function>
 				<Function AccessType="default" StaticFunction="false">
 					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
@@ -1150,7 +971,7 @@ try {
 Note that agents and agent populations are handled manually due to a recursive issue.<br>
 @param object Any data type that can be converted to JSON<br>
 @param file The path to the desried JSON output file; can be relative to the working directory]]></Description>
-					<X>250</X><Y>150</Y>
+					<X>270</X><Y>150</Y>
 					<Label><X>10</X><Y>0</Y></Label>
 					<PublicFlag>false</PublicFlag>
 					<PresentationFlag>true</PresentationFlag>
@@ -1175,7 +996,7 @@ Note that agents and agent populations are handled manually due to a recursive i
 @param object Any data type that can be converted to JSON<br>
 @param prettyprint Whether to output JSON in "pretty" format (with newlines, tabs, etc.)<br>
 @param file The path to the desried JSON output file; can be relative to the working directory]]></Description>
-					<X>230</X><Y>130</Y>
+					<X>250</X><Y>130</Y>
 					<Label><X>10</X><Y>0</Y></Label>
 					<PublicFlag>false</PublicFlag>
 					<PresentationFlag>true</PresentationFlag>
@@ -1194,6 +1015,45 @@ Note that agents and agent populations are handled manually due to a recursive i
 					</Parameter>
 					<Body><![CDATA[String output = toJson(object, prettyprint);
 writeFile(file, output);]]></Body>
+				</Function>
+				<Function AccessType="private" StaticFunction="true">
+					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+					<ReturnType><![CDATA[ObjectMapper]]></ReturnType>
+					<Id>1678394507287</Id>
+					<Name><![CDATA[createMapper]]></Name>
+					<X>90</X><Y>90</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Body><![CDATA[ObjectMapper mapper = new ObjectMapper().configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
+mapper.addMixInAnnotations(Event.class, SharedSuppressionMixIn.class); // TODO change to more generic parent type?
+mapper.addMixInAnnotations(Port.class, PortSuppressionMixIn.class);
+
+SimpleModule module = new SimpleModule();
+module.addSerializer(DataSet.class, new Serializers.DataSetSerializer());
+module.addSerializer(HistogramData.class, new Serializers.Histogram1DSerializer());
+module.addSerializer(Histogram2DData.class, new Serializers.Histogram2DSerializer());
+module.addSerializer(StatisticsDiscrete.class, new Serializers.StatisticsDiscreteSerializer());
+module.addSerializer(StatisticsContinuous.class, new Serializers.StatisticsContinuousSerializer());
+module.addSerializer(Statechart.class, new Serializers.StatechartSerializer());
+module.addSerializer(FlowchartBlock.class, new Serializers.FlowchartBlockSerializer());
+module.addSerializer(Agent.class, new Serializers.AgentSerializer());
+module.addSerializer(AgentList.class, new Serializers.AgentListSerializer());
+mapper.registerModule(module);
+return mapper;]]></Body>
+				</Function>
+				<Function AccessType="public" StaticFunction="false">
+					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+					<ReturnType><![CDATA[String]]></ReturnType>
+					<Id>1678400422725</Id>
+					<Name><![CDATA[toString]]></Name>
+					<X>70</X><Y>140</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Body><![CDATA[return jsonFilter.toString();]]></Body>
 				</Function>
 			</Functions>
 			<AgentLinks>
@@ -1242,6 +1102,7 @@ writeFile(file, output);]]></Body>
 					<PresentationFlag>true</PresentationFlag>
 					<ShowLabel>false</ShowLabel>
 					<DrawMode>SHAPE_DRAW_2D3D</DrawMode>
+					<OnClickCode><![CDATA[return true;]]></OnClickCode>
 					<EmbeddedIcon>true</EmbeddedIcon>
 					<Z>0</Z>
 					<Width>16</Width>
@@ -1565,7 +1426,6 @@ public class JsonFilter {
 			Font.class,
 			Shape.class,
 			EventOriginator.class,
-			Statechart.class,
 			IStatechartState.class,
 			AbstractLinkToAgent.class,
 			Scale.class,
@@ -1575,7 +1435,8 @@ public class JsonFilter {
 			Histogram2D.Appearance.class,
 			Chart2DPlot.Appearance.class,
 			SDIntegrationManager.class,
-			LinkToAgentAnimationSettings.class
+			LinkToAgentAnimationSettings.class,
+			Port.class
 			));
 	
 	/**
@@ -2093,6 +1954,277 @@ public class JsonFilter {
 		return String.format("JsonFilter[%s | %s autogen, %s names, %s classes, %s packages]", inBlacklistMode ? "BLACK": "WHITE", includeGeneratedObjects ? "YES":"NO", includedNames.size(), includedClasses.size(), includedPackages.size());
 	}
 
+}]]></Text>
+		</JavaClass>
+		<!--   =========   Java Class   ========  -->
+		<JavaClass>
+			<Id>1678394437727</Id>
+			<Name><![CDATA[Serializers]]></Name>
+			<Text><![CDATA[import java.io.IOException;
+import com.fasterxml.jackson.databind.ser.std.StdSerializer;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import java.util.stream.IntStream;
+import java.util.stream.Collectors;
+import java.util.regex.Pattern;
+import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Modifier;
+
+public class Serializers {
+	public static class MyStdSerializer<T> extends StdSerializer<T> {
+		public MyStdSerializer() {
+			this(null);
+		}
+		
+		public MyStdSerializer(Class<T> t) {
+			super(t);
+		}
+		
+		@Override
+		public void serialize(T value, JsonGenerator jgen, SerializerProvider provider)  
+				throws IOException, JsonProcessingException {
+			throw new IOException("Need to be called from a child class.");
+		}
+	}
+	
+	public static class DataSetSerializer extends MyStdSerializer<DataSet> {
+
+	    @Override
+	    public void serialize(
+	      DataSet value, JsonGenerator jgen, SerializerProvider provider) 
+	      throws IOException, JsonProcessingException {
+	        jgen.writeStartObject();
+	        jgen.writeNumberField("xmin", value.getXMin());
+	        jgen.writeNumberField("xmean", value.getXMean());
+	        jgen.writeNumberField("xmedian", value.getXMedian());
+	        jgen.writeNumberField("xmax", value.getXMax());
+	        jgen.writeNumberField("ymin", value.getYMin());
+	        jgen.writeNumberField("ymean", value.getYMean());
+	        jgen.writeNumberField("ymedian", value.getYMedian());
+	        jgen.writeNumberField("ymax", value.getYMax());
+	        // need to recreate entire plain data table, as the default serializer cuts off with a certain limit. 
+	        // i.e., without this, it would look like: "plainDataTable" : [ [ 0.0, 5.0 ], [ 1.0, 5.0 ], [ 2.0, 5.0 ], ..., [ 999.0, 4.0 ], [ "... 1361 more items" ]
+	        List<double[]> values = new ArrayList<>();
+	    	IntStream.range(0, value.size()).forEach(i -> values.add(new double[]{value.getX(i), value.getY(i)}));
+	        jgen.writeObjectField("plainDataTable", value.getPlainDataTable());
+	        jgen.writeEndObject();
+	    }
+	}
+	
+	public static class Histogram1DSerializer extends MyStdSerializer<HistogramData> {
+	    @Override
+	    public void serialize(
+	    		HistogramData value, JsonGenerator jgen, SerializerProvider provider) 
+	      throws IOException, JsonProcessingException {
+	        jgen.writeStartObject();
+	        int count = value.count();
+	        jgen.writeNumberField("count", count);
+	        // Follow similar structure as in ALCloud: User can derive ranges based on min X and interval width
+	        jgen.writeNumberField("lowerBound", value.getXMin());
+	        jgen.writeNumberField("intervalWidth", value.getIntervalWidth());
+	        int[] hits = IntStream.range(0, value.getNumberOfIntervals())
+	        		.map(i -> Math.round((float)value.getPDF(i)*count)).toArray();
+	        jgen.writeObjectField("hits", hits);
+	        // HSimpleData = User set explicit min/max. There may be data outside this range, so add counts of lower/upper range of interval
+	        if (value instanceof HistogramSimpleData) {
+	        	HistogramSimpleData hdataSimple = (HistogramSimpleData) value;
+	        	jgen.writeNumberField("hitsOutLow", Math.round((float)hdataSimple.getPDFOutsideLow()*count));
+	        	jgen.writeNumberField("hitsOutHigh", Math.round((float)hdataSimple.getPDFOutsideHigh()*count));
+	        }
+	        // Add in other useful stats available from histogram
+	        HashMap<String, Double> dtableStats = new HashMap<>();
+	        dtableStats.put("min", value.min());
+	        dtableStats.put("max", value.max());
+	        dtableStats.put("mean", value.mean());
+	        dtableStats.put("deviation", value.deviation());
+	        jgen.writeObjectField("statistics", dtableStats);
+	        jgen.writeEndObject();
+	    }
+	}
+	
+	public static class Histogram2DSerializer extends MyStdSerializer<Histogram2DData> {
+	    @Override
+	    public void serialize(
+	    		Histogram2DData value, JsonGenerator jgen, SerializerProvider provider) 
+	      throws IOException, JsonProcessingException {
+	        jgen.writeStartObject();
+	        // Follow similar structure as in ALCloud; user can derive interval size, etc. from available data
+	        int nX = value.getNumberOfXIntervals();
+	        int nY = value.getNumberOfYIntervals();
+	        int[][] hits = new int[nY][nX];
+	        int[] hitsOutLow = new int[nX];
+	        int[] hitsOutHigh = new int[nX];
+	        for (int x = 0; x < nX; x++) {
+	        	int xcount = value.count(x);
+	        	hitsOutLow[x] = Math.round((float)value.getPDFOutsideLow(x)*xcount);
+	        	hitsOutHigh[x] = Math.round((float)value.getPDFOutsideHigh(x)*xcount);
+	        	for (int y = 0; y < nY; y++) {
+	        		hits[y][x] = Math.round((float)value.getPDF(x, y)*xcount);
+	        	}
+	        }
+	        jgen.writeObjectField("hits", hits);
+	        jgen.writeObjectField("hitsOutLow", hitsOutLow);
+	        jgen.writeObjectField("hitsOutHigh", hitsOutHigh);
+	        jgen.writeNumberField("xMin", value.getXMin());
+	        jgen.writeNumberField("xMax", value.getXMax());
+	        jgen.writeNumberField("yMin", value.getYMin());
+	        jgen.writeNumberField("yMax", value.getYMax());
+	        jgen.writeEndObject();
+	    }
+	}
+	
+	public static class StatisticsDiscreteSerializer extends MyStdSerializer<StatisticsDiscrete> {
+	    @Override
+	    public void serialize(
+	    		StatisticsDiscrete value, JsonGenerator jgen, SerializerProvider provider) 
+	      throws IOException, JsonProcessingException {
+	        jgen.writeStartObject();
+	        String[] statRows = value.toString().split("\n");
+	    	Arrays.stream(statRows)
+	    		.map(s -> s.strip().split("\t"))
+	    		.forEach(s -> {try {
+	    			jgen.writeNumberField(s[0], Double.valueOf(s[1].replaceAll(",", "")));
+	    		} catch (IOException e) {}});
+	        jgen.writeEndObject();
+	    }
+	}
+	
+	public static class StatisticsContinuousSerializer extends MyStdSerializer<StatisticsContinuous> {
+	    @Override
+	    public void serialize(
+	    		StatisticsContinuous value, JsonGenerator jgen, SerializerProvider provider) 
+	      throws IOException, JsonProcessingException {
+	        jgen.writeStartObject();
+	        String[] statRows = value.toString().split("\n");
+	    	Arrays.stream(statRows)
+	    		.map(s -> s.strip().split("\t"))
+	    		.forEach(s -> {try {
+	    			jgen.writeNumberField(s[0], Double.valueOf(s[1].replaceAll(",", "")));
+	    		} catch (IOException e) {}});
+	        jgen.writeEndObject();
+	    }
+	}
+	
+	public static class StatechartSerializer extends MyStdSerializer<Statechart> {
+	    @Override
+	    public void serialize(
+	    		Statechart value, JsonGenerator jgen, SerializerProvider provider) 
+	      throws IOException, JsonProcessingException {
+	        jgen.writeStartObject();
+	        jgen.writeObjectField("active_state", Map.of("full", value.getFullState(), "simple", value.getActiveSimpleState().name()));
+	        jgen.writeEndObject();
+	    }
+	}
+	
+	public static class FlowchartBlockSerializer extends MyStdSerializer<FlowchartBlock> {
+		@Override
+	    public void serialize(
+	    		FlowchartBlock value, JsonGenerator jgen, SerializerProvider provider) 
+	      throws IOException, JsonProcessingException {
+			jgen.writeStartObject();
+			// idky but some block's type are inner classes, so are shown as "<user_model_package>.<AgentType>$<number>" (e.g., mymodel.Main$1)
+			// 	and in these cases, the simple name is empty...
+			// The toString of built-in blocks seem to reliably have the type in the toString, so use that in these cases.	
+	        jgen.writeStringField("type", value.getClass().getSimpleName().isEmpty()
+							? Pattern.compile("[^:]+:\\s*(.*?)\\s.+", Pattern.DOTALL).matcher(value.toString()).replaceFirst("$1")
+							: value.getClass().getSimpleName());
+	        jgen.writeObjectField("parameters",
+	        		// wonky collection is to allow non-null values
+	        		Arrays.stream(value.getParameterNames()).collect(HashMap::new, (map,name)->map.put(name, value.getParameter(name)), HashMap::putAll)
+	        );
+	        jgen.writeObjectField("ports",
+	        		// xjal check in filter omits internal ports used in messaging
+	        		Arrays.stream(value.getClass().getFields()).filter(f -> !f.getName().endsWith("_xjal") && f.getType().isAssignableFrom(FlowchartMappedPort.class))
+		        	.collect(
+			        		Collectors.toMap(f -> f.getName(), f -> {try { return ((FlowchartMappedPort)f.get(value)).count(); } catch (Exception e) {return -1;}})
+			        		)
+	        );
+	        jgen.writeEndObject();
+	    }
+	}
+	
+	public static class AgentSerializer extends MyStdSerializer<Agent> {
+		@Override
+	    public void serialize(
+	    		Agent value, JsonGenerator jgen, SerializerProvider provider) 
+	      throws IOException, JsonProcessingException {
+			
+			jgen.writeStartObject();
+			HashMap<String, Object> map = ALJsonifier.agentToMap(value, true, null);
+			for (String key : map.keySet()) {
+				Object val = map.get(key);
+				jgen.writeObjectField(key, val);
+			}
+			jgen.writeEndObject();
+		}
+	}
+	
+	public static class AgentListSerializer extends MyStdSerializer<AgentList> {
+		@Override
+	    public void serialize(
+	    		AgentList value, JsonGenerator jgen, SerializerProvider provider) 
+	      throws IOException, JsonProcessingException {
+			jgen.writeStartArray();
+			for (int i = 0; i < value.size(); i++) {
+				jgen.writeObject(value.get(i));
+			}
+			jgen.writeEndArray();
+		}
+	}
+}]]></Text>
+		</JavaClass>
+		<!--   =========   Java Class   ========  -->
+		<JavaClass>
+			<Id>1678490259125</Id>
+			<Name><![CDATA[SharedSuppressionMixIn]]></Name>
+			<Text><![CDATA[import com.fasterxml.jackson.annotation.JsonIgnore;
+
+public interface SharedSuppressionMixIn
+{
+	
+	@JsonIgnore
+    public Agent getActiveObject();
+	
+	@JsonIgnore
+	public Agent getAgent();
+	
+	
+	
+}]]></Text>
+		</JavaClass>
+		<!--   =========   Java Class   ========  -->
+		<JavaClass>
+			<Id>1678494803375</Id>
+			<Name><![CDATA[PortSuppressionMixIn]]></Name>
+			<Text><![CDATA[import com.fasterxml.jackson.annotation.JsonIgnore;
+
+public interface PortSuppressionMixIn extends SharedSuppressionMixIn
+{
+	@JsonIgnore
+	public String getName();
+	
+	@JsonIgnore
+	public String getFullName();
+	
+	@JsonIgnore
+	public FlowchartBlock getFlowchartBlockRepresentative();
+	
+	@JsonIgnore
+	public FlowchartBlock getFlowchartBlockRepresentative(Agent agent);
+	
+	@JsonIgnore
+	public List getStatechartLinks();
+	
+	@JsonIgnore
+	public List getFlatLinks();
+	
+	@JsonIgnore
+	public List getUpLinks();
+	
+	@JsonIgnore
+	public List getDownLinks();
 }]]></Text>
 		</JavaClass>
 	</JavaClasses>
