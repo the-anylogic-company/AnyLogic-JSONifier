@@ -832,7 +832,7 @@ Note that agents and agent populations are handled manually due to a recursive i
 @param clazz The class - specifically a standard Java type - to convert the provided string to<br>
 @return The object of the specified type (or `null` if errors were encountered)]]></Description>
 					<CustomModifierCode><![CDATA[public static <T>]]></CustomModifierCode>                 	
-					<X>480</X><Y>70</Y>
+					<X>500</X><Y>90</Y>
 					<Label><X>10</X><Y>0</Y></Label>
 					<PublicFlag>false</PublicFlag>
 					<PresentationFlag>true</PresentationFlag>
@@ -845,25 +845,7 @@ Note that agents and agent populations are handled manually due to a recursive i
 						<Name><![CDATA[clazz]]></Name>
 						<Type><![CDATA[Class<T>]]></Type>
 					</Parameter>
-					<Body><![CDATA[// handle whether input is a JSON string or path to JSON file
-json = parseJsonString(json);
-
-T output = null;
-
-// Agent related conversion require specialize functions
-if (Agent.class.isAssignableFrom(clazz) || AgentList.class.isAssignableFrom(clazz)) {
-	try {
-		throw new Exception("Need to use `fromPopulationJson` for converting agent populations (returning null)");
-	} catch (Exception e) {e.printStackTrace();}
-	return null;
-}
-	
-try {
-	output = objmapper.readValue(json, clazz);
-} catch (IOException e) {
-	e.printStackTrace();
-}
-return output;]]></Body>
+					<Body><![CDATA[return fromJson(json, null, clazz);]]></Body>
 				</Function>
 				<Function AccessType="default" StaticFunction="true">
 					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
@@ -1125,17 +1107,22 @@ return output;]]></Body>
 					<Name><![CDATA[fromPopulationJson]]></Name>
 					<Description><![CDATA[A function specifically for converting the given JSON (an array of objects mapping parameter names to value) to an arraylist of agents.<br>
 @param json A JSON string **or** a path to a file with this information<br>
+@param pointer A JSON pointer expression to identify the part of the string to convert; if null or empty, uses the json String directly<br>
 @param agent_clazz The class of the AL agent type<br>
 @param anyAgent Literally any other active agent in your model; used to properly start the agent (you can use `this` to refer to the active agent you're calling it from).
 @return AgentArrayList An access-only ArrayList of the agents]]></Description>
 					<CustomModifierCode><![CDATA[public static <T extends Agent>]]></CustomModifierCode>                 	
-					<X>480</X><Y>230</Y>
+					<X>480</X><Y>240</Y>
 					<Label><X>10</X><Y>0</Y></Label>
 					<PublicFlag>false</PublicFlag>
 					<PresentationFlag>true</PresentationFlag>
 					<ShowLabel>true</ShowLabel>
 					<Parameter>
 						<Name><![CDATA[json]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[pointer]]></Name>
 						<Type><![CDATA[String]]></Type>
 					</Parameter>
 					<Parameter>
@@ -1155,6 +1142,9 @@ json = parseJsonString(json);
 try {	
 	// To properly get entirety of single agent, need to convert array to JsonNode
 	JsonNode root = objmapper.readTree(json);
+	// Get at specific pointer if it was provided
+	if (pointer != null && !pointer.isEmpty())
+		root = root.at(pointer);
 	// Build the output array based on the number of agent jsons detected
 	ArrayList<T> newPop = new ArrayList();
 	// Run each child json's string thru `fromAgentJson` and add to output array
@@ -1179,6 +1169,7 @@ return null;]]></Body>
 					<Description><![CDATA[Converts a JSON string of parameter mapping to an active/initialized agent<br>
 The agent will be added to the specified population.<br>
 @param json A JSON string to be converted to an AL agent **or** a path to a file with this information<br>
+@param pointer A JSON pointer expression to identify the part of the string to convert; if null or empty, uses the json String directly<br>
 @param clazz The class of the AL agent type to convert the provided string to<br>
 @param population The population to add this agent to
 @return The agent of the specified type (or `null` if errors were encountered)]]></Description>
@@ -1193,6 +1184,10 @@ The agent will be added to the specified population.<br>
 						<Type><![CDATA[String]]></Type>
 					</Parameter>
 					<Parameter>
+						<Name><![CDATA[pointer]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Parameter>
 						<Name><![CDATA[clazz]]></Name>
 						<Type><![CDATA[Class<T>]]></Type>
 					</Parameter>
@@ -1204,7 +1199,7 @@ The agent will be added to the specified population.<br>
 json = parseJsonString(json);
 
 // Convert json to hashmap for name/value lookup
-HashMap<String, Object> paramLookup = fromJson(json, HashMap.class);
+HashMap<String, Object> paramLookup = fromJson(json, pointer, HashMap.class);
 
 // Agent is "generic" when not alive/started
 boolean genericAgent = population == null;
@@ -1270,18 +1265,23 @@ return null;]]></Body>
 					<ReturnType><![CDATA[AgentArrayList]]></ReturnType>
 					<Id>1665787820194</Id>
 					<Name><![CDATA[fromPopulationJson]]></Name>
-					<Description><![CDATA[Converts a list of agents from JSON (specifically an array of objects mapping parameter names to value) and adds it to an existing population.
-@param json A valid JSON array **or** a path to a file with this information
-@param agent_clazz The Java class for the agent type to convert to
+					<Description><![CDATA[Converts a list of agents from JSON (specifically an array of objects mapping parameter names to value) and adds it to an existing population.<br>
+@param json A valid JSON array **or** a path to a file with this information<br>
+@param pointer A JSON pointer expression to identify the part of the string to convert; if null or empty, uses the json String directly<br>
+@param agent_clazz The Java class for the agent type to convert to<br>
 @param population The population to add the agents to]]></Description>
 					<CustomModifierCode><![CDATA[public static <T extends Agent>]]></CustomModifierCode>                 	
-					<X>480</X><Y>270</Y>
+					<X>480</X><Y>290</Y>
 					<Label><X>10</X><Y>0</Y></Label>
 					<PublicFlag>false</PublicFlag>
 					<PresentationFlag>true</PresentationFlag>
 					<ShowLabel>true</ShowLabel>
 					<Parameter>
 						<Name><![CDATA[json]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[pointer]]></Name>
 						<Type><![CDATA[String]]></Type>
 					</Parameter>
 					<Parameter>
@@ -1322,7 +1322,7 @@ try {
 @param anyAgent Literally any other active agent in your model; used to properly start the agent (you can use `this` to refer to the active agent you're calling it from).
 @return The agent of the specified type (or `null` if errors were encountered)]]></Description>
 					<CustomModifierCode><![CDATA[public static <T extends Agent>]]></CustomModifierCode>                 	
-					<X>480</X><Y>110</Y>
+					<X>500</X><Y>140</Y>
 					<Label><X>10</X><Y>0</Y></Label>
 					<PublicFlag>false</PublicFlag>
 					<PresentationFlag>true</PresentationFlag>
@@ -1339,53 +1339,7 @@ try {
 						<Name><![CDATA[anyAgent]]></Name>
 						<Type><![CDATA[Agent]]></Type>
 					</Parameter>
-					<Body><![CDATA[// handle whether input is a JSON string or path to JSON file
-json = parseJsonString(json);
-
-// Don't let the user try to avoid passing an active agent
-if (anyAgent == null || anyAgent.getEngine() == null) {
-	throw new RuntimeException(String.format("Argument 'anyAgent' must be a valid, active Agent ... was given '%s' (engine = %s)", anyAgent, anyAgent==null?null:anyAgent.getEngine()));
-}
-
-// Convert json to hashmap for name/value lookup
-HashMap<String, Object> paramLookup = fromJson(json, HashMap.class);
-
-try {
-	T myAgent = clazz
-			.getDeclaredConstructor()
-			.newInstance();
-	
-	// User may have only passed a subset of parameters,
-	//	so try to set them all to defaults first.
-	// Note: cannot always call this because will throw null exception when default values 
-	//	reference function that require non-static usage (e.g., random functions)
-	try {
-		myAgent.setParametersToDefaultValues();
-	} catch (NullPointerException e) {
-		// At least mark as set
-		myAgent.markParametersAreSet();
-	}
-	
-	paramLookup.forEach( (name,value) -> {
-		// don't include custom key added to agent json in `agentPopToList`
-		if (!name.equals("_index")) {
-			boolean result = myAgent.setParameter(name, value, false);
-			// alert user, but only once per run
-			if (!result && !warnedParameters.contains(name)) {
-				traceln("ONE-TIME WARNING: Parameter " + name + " not found!");
-				warnedParameters.add(name);
-			}
-		}
-	});
-
-	// fully initialize the agent / "awaken" it
-	myAgent.createAndStart(anyAgent);
-	
-	return myAgent;
-} catch (InvocationTargetException | InstantiationException | NoSuchMethodException | IllegalAccessException e) {
-	e.printStackTrace();
-}
-return null;]]></Body>
+					<Body><![CDATA[return ALJsonifier.fromAgentJson(json, null, clazz, anyAgent);]]></Body>
 				</Function>
 				<Function AccessType="default" StaticFunction="true">
 					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
@@ -1428,7 +1382,7 @@ This function will only work if called from the AnyLogic editor with the ALJsoni
 @param clazz The class of the AL agent type to convert the provided string to<br>
 @return The agent of the specified type (or `null` if errors were encountered)]]></Description>
 					<CustomModifierCode><![CDATA[public <T extends Agent>]]></CustomModifierCode>                 	
-					<X>500</X><Y>130</Y>
+					<X>520</X><Y>160</Y>
 					<Label><X>10</X><Y>0</Y></Label>
 					<PublicFlag>false</PublicFlag>
 					<PresentationFlag>true</PresentationFlag>
@@ -1629,6 +1583,227 @@ return mapper;]]></Body>
 					<PresentationFlag>true</PresentationFlag>
 					<ShowLabel>true</ShowLabel>
 					<Body><![CDATA[return jsonFilter.toString();]]></Body>
+				</Function>
+				<Function AccessType="default" StaticFunction="false">
+					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+					<ReturnType><![CDATA[T]]></ReturnType>
+					<Id>1682542721746</Id>
+					<Name><![CDATA[fromJson]]></Name>
+					<Description><![CDATA[Converts a JSON string to a POJO (i.e., not an AnyLogic-based class - namely agent or agent population types)<br>
+@param json A JSON string to be converted **or** a path to a file with this information<br>
+@param pointer A JSON pointer expression to identify the part of the string to convert; if null or empty, uses the json String directly<br>
+@param clazz The class - specifically a standard Java type - to convert the provided string to<br>
+@return The object of the specified type (or `null` if errors were encountered)]]></Description>
+					<CustomModifierCode><![CDATA[public static <T>]]></CustomModifierCode>                 	
+					<X>480</X><Y>70</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[json]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[pointer]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[clazz]]></Name>
+						<Type><![CDATA[Class<T>]]></Type>
+					</Parameter>
+					<Body><![CDATA[// handle whether input is a JSON string or path to JSON file
+json = parseJsonString(json);
+
+T output = null;
+
+// Agent related conversion require specialize functions
+if (Agent.class.isAssignableFrom(clazz) || AgentList.class.isAssignableFrom(clazz)) {
+	try {
+		throw new Exception("Need to use `fromPopulationJson` for converting agent populations (returning null)");
+	} catch (Exception e) {e.printStackTrace();}
+	return null;
+}
+	
+try {
+	JsonNode root = objmapper.readTree(json);
+	JsonNode target = pointer == null || pointer.isEmpty() ? root : root.at(pointer);
+	output = objmapper.treeToValue(target, clazz);
+} catch (IOException e) {
+	e.printStackTrace();
+}
+return output;]]></Body>
+				</Function>
+				<Function AccessType="default" StaticFunction="false">
+					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+					<ReturnType><![CDATA[T]]></ReturnType>
+					<Id>1682543731263</Id>
+					<Name><![CDATA[fromAgentJson]]></Name>
+					<Description><![CDATA[Converts a JSON string of parameter mapping to an active/initialized agent.<br>
+@param json A JSON string to be converted to an AL agent **or** a path to a file with this information<br>
+@param pointer A JSON pointer expression to identify the part of the string to convert; if null or empty, uses the json String directly<br>
+@param clazz The class of the AL agent type to convert the provided string to<br>
+@param anyAgent Literally any other active agent in your model; used to properly start the agent (you can use `this` to refer to the active agent you're calling it from).
+@return The agent of the specified type (or `null` if errors were encountered)]]></Description>
+					<CustomModifierCode><![CDATA[public static <T extends Agent>]]></CustomModifierCode>                 	
+					<X>480</X><Y>120</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[json]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[pointer]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[clazz]]></Name>
+						<Type><![CDATA[Class<T>]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[anyAgent]]></Name>
+						<Type><![CDATA[Agent]]></Type>
+					</Parameter>
+					<Body><![CDATA[// handle whether input is a JSON string or path to JSON file
+json = parseJsonString(json);
+
+// Don't let the user try to avoid passing an active agent
+if (anyAgent == null || anyAgent.getEngine() == null) {
+	throw new RuntimeException(String.format("Argument 'anyAgent' must be a valid, active Agent ... was given '%s' (engine = %s)", anyAgent, anyAgent==null?null:anyAgent.getEngine()));
+}
+
+// Convert json (at pointer) to hashmap for name/value lookup
+HashMap<String, Object> paramLookup = fromJson(json, pointer, HashMap.class);
+
+try {
+	T myAgent = clazz
+			.getDeclaredConstructor()
+			.newInstance();
+	
+	// User may have only passed a subset of parameters,
+	//	so try to set them all to defaults first.
+	// Note: cannot always call this because will throw null exception when default values 
+	//	reference function that require non-static usage (e.g., random functions)
+	try {
+		myAgent.setParametersToDefaultValues();
+	} catch (NullPointerException e) {
+		// At least mark as set
+		myAgent.markParametersAreSet();
+	}
+	
+	paramLookup.forEach( (name,value) -> {
+		// don't include custom key added to agent json in `agentPopToList`
+		if (!name.equals("_index")) {
+			boolean result = myAgent.setParameter(name, value, false);
+			// alert user, but only once per run
+			if (!result && !warnedParameters.contains(name)) {
+				traceln("ONE-TIME WARNING: Parameter " + name + " not found!");
+				warnedParameters.add(name);
+			}
+		}
+	});
+
+	// fully initialize the agent / "awaken" it
+	myAgent.createAndStart(anyAgent);
+	
+	return myAgent;
+} catch (InvocationTargetException | InstantiationException | NoSuchMethodException | IllegalAccessException e) {
+	e.printStackTrace();
+}
+return null;]]></Body>
+				</Function>
+				<Function AccessType="default" StaticFunction="false">
+					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+					<ReturnType><![CDATA[T]]></ReturnType>
+					<Id>1682543917517</Id>
+					<Name><![CDATA[fromAgentJson]]></Name>
+					<Description><![CDATA[Converts a JSON string of parameter mapping to an active/initialized agent<br>
+The agent will be added to the specified population.<br>
+@param json A JSON string to be converted to an AL agent **or** a path to a file with this information<br>
+@param clazz The class of the AL agent type to convert the provided string to<br>
+@param population The population to add this agent to
+@return The agent of the specified type (or `null` if errors were encountered)]]></Description>
+					<CustomModifierCode><![CDATA[public static <T extends Agent>]]></CustomModifierCode>                 	
+					<X>500</X><Y>210</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[json]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[clazz]]></Name>
+						<Type><![CDATA[Class<T>]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[population]]></Name>
+						<Type><![CDATA[AgentArrayList]]></Type>
+					</Parameter>
+					<Body><![CDATA[return ALJsonifier.fromAgentJson(json, null, clazz, population);]]></Body>
+				</Function>
+				<Function AccessType="default" StaticFunction="false">
+					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+					<ReturnType><![CDATA[ArrayList]]></ReturnType>
+					<Id>1682543923418</Id>
+					<Name><![CDATA[fromPopulationJson]]></Name>
+					<Description><![CDATA[A function specifically for converting the given JSON (an array of objects mapping parameter names to value) to an arraylist of agents.<br>
+@param json A JSON string **or** a path to a file with this information<br>
+@param agent_clazz The class of the AL agent type<br>
+@param anyAgent Literally any other active agent in your model; used to properly start the agent (you can use `this` to refer to the active agent you're calling it from).
+@return AgentArrayList An access-only ArrayList of the agents]]></Description>
+					<CustomModifierCode><![CDATA[public static <T extends Agent>]]></CustomModifierCode>                 	
+					<X>500</X><Y>260</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[json]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[agent_clazz]]></Name>
+						<Type><![CDATA[Class<T>]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[anyAgent]]></Name>
+						<Type><![CDATA[Agent]]></Type>
+					</Parameter>
+					<Body><![CDATA[return ALJsonifier.fromPopulationJson(json, null, agent_clazz, anyAgent);]]></Body>
+				</Function>
+				<Function AccessType="default" StaticFunction="false">
+					<ReturnModificator>VOID</ReturnModificator>
+					<ReturnType><![CDATA[AgentArrayList]]></ReturnType>
+					<Id>1682543925517</Id>
+					<Name><![CDATA[fromPopulationJson]]></Name>
+					<Description><![CDATA[Converts a list of agents from JSON (specifically an array of objects mapping parameter names to value) and adds it to an existing population.
+@param json A valid JSON array **or** a path to a file with this information
+@param agent_clazz The Java class for the agent type to convert to
+@param population The population to add the agents to]]></Description>
+					<CustomModifierCode><![CDATA[public static <T extends Agent>]]></CustomModifierCode>                 	
+					<X>500</X><Y>310</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[json]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[agent_clazz]]></Name>
+						<Type><![CDATA[Class<T>]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[population]]></Name>
+						<Type><![CDATA[AgentArrayList]]></Type>
+					</Parameter>
+					<Body><![CDATA[ALJsonifier.fromPopulationJson(json, null, agent_clazz, population);]]></Body>
 				</Function>
 			</Functions>
 			<AgentLinks>
