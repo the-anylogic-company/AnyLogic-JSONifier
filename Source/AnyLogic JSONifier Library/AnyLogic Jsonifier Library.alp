@@ -1301,6 +1301,9 @@ json = parseJsonString(json);
 try {	
 	// To properly get entirety of single agent, need to convert array to JsonNode
 	JsonNode root = objmapper.readTree(json);
+	// Get at specific pointer if it was provided
+	if (pointer != null && !pointer.isEmpty())
+		root = root.at(pointer);
 	// Run each child json's string thru `fromAgentJson` and add to output array
 	for (int i = 0; i < root.size(); i++) {
 		JsonNode child = root.get(i);
