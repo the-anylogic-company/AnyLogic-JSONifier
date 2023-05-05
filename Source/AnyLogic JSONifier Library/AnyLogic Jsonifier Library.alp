@@ -2161,7 +2161,7 @@ public class Serializers {
 			
 			jgen.writeStartObject();
 			HashMap<String, Object> map = ALJsonifier.agentToMap(value, true, null);
-			for (String key : map.keySet()) {
+			for (String key : new TreeSet<>(map.keySet())) {
 				Object val = map.get(key);
 				jgen.writeObjectField(key, val);
 			}
