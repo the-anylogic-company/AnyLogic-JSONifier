@@ -4,7 +4,7 @@
 	         AnyLogic Project File 
 *************************************************	         
 -->
-<AnyLogicWorkspace WorkspaceVersion="1.9" AnyLogicVersion="8.8.1.202210270952" AlpVersion="8.7.7">
+<AnyLogicWorkspace WorkspaceVersion="1.9" AnyLogicVersion="8.8.3.202304281216" AlpVersion="8.7.7">
 <Model>
 	<Id>1665787765893</Id>
 	<Name><![CDATA[AnyLogic Jsonifier Library]]></Name>
@@ -39,7 +39,6 @@ private enum ObjectAgentType {
 	AGENT_POPULATION, // anylogic-population (of agents)
 	AGENT_COLLECTION // java collection with agent-typed components
 }]]></AdditionalClassCode>
-			<ClientAreaTopLeft><X>0</X><Y>0</Y></ClientAreaTopLeft>
 			<Import><![CDATA[import java.io.IOException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -60,7 +59,8 @@ import java.nio.file.Paths;
 import java.nio.file.InvalidPathException;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import java.lang.reflect.Type;
-import java.util.stream.Collectors;]]></Import>
+import java.util.stream.Collectors;
+import com.anylogic.engine.AnyLogicCustomSerialization;]]></Import>
 			<Generic>false</Generic>
 			<GenericParameter>
 				<Id>1665787765897</Id>
@@ -80,7 +80,6 @@ import java.util.stream.Collectors;]]></Import>
 			<SceneBackgroundColor/>
 			<SceneSkybox>null</SceneSkybox>
 			<AgentProperties>
-	 			<SpaceType>CONTINUOUS</SpaceType>			
 				<EnvironmentDefinesInitialLocation>true</EnvironmentDefinesInitialLocation>
 				<RotateAnimationTowardsMovement>true</RotateAnimationTowardsMovement>
 				<RotateAnimationVertically>false</RotateAnimationVertically>
@@ -348,6 +347,13 @@ for (Field field : fields) {
 	if (jsonFilter.skipJsonifying(field.getName(), field.getModifiers(), field.getType())) {
 		//traceln("\tSkipping!");
 		continue;
+	}
+	
+	// skip for links back to agents
+	if (field.getAnnotations().length > 0 
+			&& field.getAnnotations()[0].annotationType().equals(AnyLogicCustomSerialization.class) 
+			&& Modifier.isTransient(field.getModifiers())) {
+		continue;	
 	}
 	
 	// skip for constants/enums
@@ -1280,7 +1286,6 @@ return mapper;]]></Body>
 		<SimulationExperiment ActiveObjectClassId="1665787765899">
 			<Id>1665787765901</Id>
 			<Name><![CDATA[Simulation]]></Name>
-			<ClientAreaTopLeft><X>0</X><Y>0</Y></ClientAreaTopLeft>
 			<CommandLineArguments><![CDATA[]]></CommandLineArguments>
 			<MaximumMemory>512</MaximumMemory>
 			<RandomNumberGenerationType>fixedSeed</RandomNumberGenerationType>
