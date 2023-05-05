@@ -60,7 +60,8 @@ import java.nio.file.InvalidPathException;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import java.lang.reflect.Type;
 import java.util.stream.Collectors;
-import com.anylogic.engine.AnyLogicCustomSerialization;]]></Import>
+import com.anylogic.engine.AnyLogicCustomSerialization;
+import com.fasterxml.jackson.databind.MapperFeature;]]></Import>
 			<Generic>false</Generic>
 			<GenericParameter>
 				<Id>1665787765897</Id>
@@ -1032,7 +1033,7 @@ writeFile(file, output);]]></Body>
 					<PublicFlag>false</PublicFlag>
 					<PresentationFlag>true</PresentationFlag>
 					<ShowLabel>true</ShowLabel>
-					<Body><![CDATA[ObjectMapper mapper = new ObjectMapper().configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
+					<Body><![CDATA[ObjectMapper mapper = new ObjectMapper();
 mapper.addMixInAnnotations(Event.class, SharedSuppressionMixIn.class); // TODO change to more generic parent type?
 mapper.addMixInAnnotations(Port.class, PortSuppressionMixIn.class);
 
@@ -1969,6 +1970,8 @@ public class JsonFilter {
 import com.fasterxml.jackson.databind.ser.std.StdSerializer;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import java.util.stream.IntStream;
 import java.util.stream.Collectors;
