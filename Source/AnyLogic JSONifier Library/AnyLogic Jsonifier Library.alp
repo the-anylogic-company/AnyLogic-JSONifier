@@ -61,7 +61,9 @@ import com.fasterxml.jackson.databind.module.SimpleModule;
 import java.lang.reflect.Type;
 import java.util.stream.Collectors;
 import com.anylogic.engine.AnyLogicCustomSerialization;
-import com.fasterxml.jackson.databind.MapperFeature;]]></Import>
+import com.fasterxml.jackson.databind.MapperFeature;
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.ser.std.StdSerializer;]]></Import>
 			<Generic>false</Generic>
 			<GenericParameter>
 				<Id>1665787765897</Id>
@@ -1038,15 +1040,19 @@ mapper.addMixInAnnotations(Event.class, SharedSuppressionMixIn.class); // TODO c
 mapper.addMixInAnnotations(Port.class, PortSuppressionMixIn.class);
 
 SimpleModule module = new SimpleModule();
-module.addSerializer(DataSet.class, new Serializers.DataSetSerializer());
-module.addSerializer(HistogramData.class, new Serializers.Histogram1DSerializer());
-module.addSerializer(Histogram2DData.class, new Serializers.Histogram2DSerializer());
-module.addSerializer(StatisticsDiscrete.class, new Serializers.StatisticsDiscreteSerializer());
-module.addSerializer(StatisticsContinuous.class, new Serializers.StatisticsContinuousSerializer());
-module.addSerializer(Statechart.class, new Serializers.StatechartSerializer());
-module.addSerializer(FlowchartBlock.class, new Serializers.FlowchartBlockSerializer());
-module.addSerializer(Agent.class, new Serializers.AgentSerializer());
-module.addSerializer(AgentList.class, new Serializers.AgentListSerializer());
+
+// Loop thru all the declared serializers (except the generic base class), registering all with the module.
+for (Class<?> declaredClass : Serializers.class.getDeclaredClasses()) {
+    if (!declaredClass.getSimpleName().equals("MyStdSerializer")) {
+    	try {
+        	// Create an instance of the class and have it register itself
+        	((Serializers.MyStdSerializer<?>) declaredClass.getDeclaredConstructor().newInstance()).register(module);
+		} catch (Exception e) {
+			traceln("[ERROR] Failed to register the serializer '%s'", declaredClass.getName());
+			e.printStackTrace();
+		}
+    }
+}
 mapper.registerModule(module);
 return mapper;]]></Body>
 				</Function>
@@ -1979,7 +1985,22 @@ import java.util.regex.Pattern;
 import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Modifier;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.querydsl.sql.ColumnMetadata;
+import com.querydsl.core.types.PathMetadata;
+import com.querydsl.core.types.Expression;
+import com.querydsl.core.types.Path;
+import com.querydsl.sql.ForeignKey;
+import com.querydsl.sql.PrimaryKey;
+import com.querydsl.sql.RelationalPathBase;
 
+/**
+ * Container class for all serializers.
+ * Technical notes: - Contains one base class (MyStdSerializer) intended to have the proper constructors and initial methods.
+ * 					- All other classes extend this for each class it wants to serialize for.
+ * 					- Jackson will use whatever class matches the lowest level class, 
+ * 						enabling simple parent class serializers and more useful/specific child class serializers.
+ */
 public class Serializers {
 	public static class MyStdSerializer<T> extends StdSerializer<T> {
 		public MyStdSerializer() {
@@ -1995,6 +2016,10 @@ public class Serializers {
 				throws IOException, JsonProcessingException {
 			throw new IOException("Need to be called from a child class.");
 		}
+		
+		public void register(SimpleModule module) {
+	        module.addSerializer(handledType(), this);
+	    }
 	}
 	
 	public static class DataSetSerializer extends MyStdSerializer<DataSet> {
@@ -2018,6 +2043,11 @@ public class Serializers {
 	    	IntStream.range(0, value.size()).forEach(i -> values.add(new double[]{value.getX(i), value.getY(i)}));
 	        jgen.writeObjectField("plainDataTable", value.getPlainDataTable());
 	        jgen.writeEndObject();
+	    }
+	    
+	    @Override
+	    public void register(SimpleModule module) {
+	        module.addSerializer(DataSet.class, this);
 	    }
 	}
 	
@@ -2050,6 +2080,11 @@ public class Serializers {
 	        jgen.writeObjectField("statistics", dtableStats);
 	        jgen.writeEndObject();
 	    }
+	    
+	    @Override
+	    public void register(SimpleModule module) {
+	        module.addSerializer(HistogramData.class, this);
+	    }
 	}
 	
 	public static class Histogram2DSerializer extends MyStdSerializer<Histogram2DData> {
@@ -2081,6 +2116,11 @@ public class Serializers {
 	        jgen.writeNumberField("yMax", value.getYMax());
 	        jgen.writeEndObject();
 	    }
+	    
+	    @Override
+	    public void register(SimpleModule module) {
+	        module.addSerializer(Histogram2DData.class, this);
+	    }
 	}
 	
 	public static class StatisticsDiscreteSerializer extends MyStdSerializer<StatisticsDiscrete> {
@@ -2096,6 +2136,11 @@ public class Serializers {
 	    			jgen.writeNumberField(s[0], Double.valueOf(s[1].replaceAll(",", "")));
 	    		} catch (IOException e) {}});
 	        jgen.writeEndObject();
+	    }
+	    
+	    @Override
+	    public void register(SimpleModule module) {
+	        module.addSerializer(StatisticsDiscrete.class, this);
 	    }
 	}
 	
@@ -2113,6 +2158,31 @@ public class Serializers {
 	    		} catch (IOException e) {}});
 	        jgen.writeEndObject();
 	    }
+	    
+	    @Override
+	    public void register(SimpleModule module) {
+	        module.addSerializer(StatisticsContinuous.class, this);
+	    }
+	}
+	
+	/**
+	 * Parent class of Transitions, Events, and DyanmicEvents.
+	 * Technical note: needed due to recursive issue from `getAgent`
+	 */
+	public static class EventOriginatorSerializer extends MyStdSerializer<EventOriginator> {
+	    @Override
+	    public void serialize(
+	    		EventOriginator value, JsonGenerator jgen, SerializerProvider provider) 
+	      throws IOException, JsonProcessingException {
+	        jgen.writeStartObject();
+	        jgen.writeNumberField("time_remaining", value.getRest());
+	        jgen.writeEndObject();
+	    }
+	    
+	    @Override
+	    public void register(SimpleModule module) {
+	        module.addSerializer(EventOriginator.class, this);
+	    }
 	}
 	
 	public static class StatechartSerializer extends MyStdSerializer<Statechart> {
@@ -2124,6 +2194,11 @@ public class Serializers {
 	        jgen.writeObjectField("active_state", Map.of("full", value.getFullState(), "simple", value.getActiveSimpleState().name()));
 	        jgen.writeEndObject();
 	    }
+	    
+	    @Override
+	    public void register(SimpleModule module) {
+	        module.addSerializer(Statechart.class, this);
+	    }
 	}
 	
 	public static class FlowchartBlockSerializer extends MyStdSerializer<FlowchartBlock> {
@@ -2132,7 +2207,7 @@ public class Serializers {
 	    		FlowchartBlock value, JsonGenerator jgen, SerializerProvider provider) 
 	      throws IOException, JsonProcessingException {
 			jgen.writeStartObject();
-			// idky but some block's type are inner classes, so are shown as "<user_model_package>.<AgentType>$<number>" (e.g., mymodel.Main$1)
+			// idk y but some block's type are inner classes, so are shown as "<user_model_package>.<AgentType>$<number>" (e.g., mymodel.Main$1)
 			// 	and in these cases, the simple name is empty...
 			// The toString of built-in blocks seem to reliably have the type in the toString, so use that in these cases.	
 	        jgen.writeStringField("type", value.getClass().getSimpleName().isEmpty()
@@ -2151,6 +2226,11 @@ public class Serializers {
 	        );
 	        jgen.writeEndObject();
 	    }
+		
+		@Override
+	    public void register(SimpleModule module) {
+	        module.addSerializer(FlowchartBlock.class, this);
+	    }
 	}
 	
 	public static class AgentSerializer extends MyStdSerializer<Agent> {
@@ -2158,7 +2238,6 @@ public class Serializers {
 	    public void serialize(
 	    		Agent value, JsonGenerator jgen, SerializerProvider provider) 
 	      throws IOException, JsonProcessingException {
-			
 			jgen.writeStartObject();
 			HashMap<String, Object> map = ALJsonifier.agentToMap(value, true, null);
 			for (String key : new TreeSet<>(map.keySet())) {
@@ -2167,6 +2246,11 @@ public class Serializers {
 			}
 			jgen.writeEndObject();
 		}
+		
+		@Override
+	    public void register(SimpleModule module) {
+	        module.addSerializer(Agent.class, this);
+	    }
 	}
 	
 	public static class AgentListSerializer extends MyStdSerializer<AgentList> {
@@ -2180,7 +2264,307 @@ public class Serializers {
 			}
 			jgen.writeEndArray();
 		}
+		
+		@Override
+	    public void register(SimpleModule module) {
+	        module.addSerializer(AgentList.class, this);
+	    }
 	}
+	
+	public static class ViewAreaSerializer extends MyStdSerializer<ViewArea> {
+		@Override
+	    public void serialize(
+	    		ViewArea value, JsonGenerator jgen, SerializerProvider provider) 
+	      throws IOException, JsonProcessingException {
+			jgen.writeNull();
+		}
+		
+		@Override
+	    public void register(SimpleModule module) {
+	        module.addSerializer(ViewArea.class, this);
+	    }
+	}
+	
+	public static class LinkToAgentsSerializer extends MyStdSerializer<LinkToAgentStandardImpl> {
+		@Override
+	    public void serialize(
+	    		LinkToAgentStandardImpl value, JsonGenerator jgen, SerializerProvider provider) 
+	      throws IOException, JsonProcessingException {
+			jgen.writeStartObject();
+			jgen.writeStringField("owner", value.getOwner().getName());
+			jgen.writeNumberField("connections_count", value.getConnectionsNumber());
+			jgen.writeEndObject();
+		}
+		
+		@Override
+	    public void register(SimpleModule module) {
+	        module.addSerializer(LinkToAgentStandardImpl.class, this);
+	    }
+	}
+	
+	public static class AbstractMarkupSerializer extends MyStdSerializer<AbstractMarkup> {
+		@Override
+	    public void serialize(
+	    		AbstractMarkup value, JsonGenerator jgen, SerializerProvider provider) 
+	      throws IOException, JsonProcessingException {
+			if (value instanceof AnimationStaticLocationProvider) { // interface, so won't be detected as a standalone class
+				// implemented by AreaNode, ConveyorCustomStation, ConveyorNode, ConveyorPath, ConveyorPointNode, ConveyorPortImpl, ConveyorTransferTable, ConveyorTransitionalNode, ConveyorTurnStation, ConveyorTurntable, 
+				//					GISNode, GISPoint, GISRegion, GISRoute, NetworkPortImpl, Node, Path, PointNode, PolygonalNode, QueueArea, RectangularNode
+				jgen.writeStartObject();
+				
+				AnimationStaticLocationProvider providerValue = (AnimationStaticLocationProvider) value;
+				Position pos = providerValue.getPosition(0, 5, null); //  TODO only write the parts of the position that correspond to the space the object lives in
+				
+				jgen.writeObjectField("position", pos); // gets position 0 (which can be for the object itself or its start location)
+				jgen.writeObjectField("space_type", providerValue.getSpace().getAgentSpaceType().formatName());
+				jgen.writeEndObject();
+			} else {
+				jgen.writeNull();
+			}
+			
+		}
+		
+		@Override
+	    public void register(SimpleModule module) {
+	        module.addSerializer(AbstractMarkup.class, this);
+	    }
+	}
+	
+	/**
+	 * Parent class of all network types ("normal" networks, gis, conveyor, road, rail, level containers).
+	 * Specifically important because these types have `getSpace()` methods that can cause recursive issues.
+	 */
+	public static class AbstractMarkupAggregatorSerializer extends MyStdSerializer<AbstractMarkupAggregator> {
+		@Override
+	    public void serialize(
+	    		AbstractMarkupAggregator value, JsonGenerator jgen, SerializerProvider provider) 
+	      throws IOException, JsonProcessingException {
+			jgen.writeNull();
+		}
+		
+		@Override
+	    public void register(SimpleModule module) {
+	        module.addSerializer(AbstractMarkupAggregator.class, this);
+	    }
+	}
+	
+	/**
+	 * Parent class of Shape3D, ShapeCAD, ShapeCanvas, ShapeControl, ShapeEmbeddedObjectIcon, ShapeInspect, 
+	 * 					ShapeModelPrimitives, ShapeScale, ShapeSVG
+	 */
+	public static class ShapeSerializer extends MyStdSerializer<Shape> {
+		
+		@Override
+	    public void serialize(
+	    		Shape value, JsonGenerator jgen, SerializerProvider provider) 
+	      throws IOException, JsonProcessingException {
+			jgen.writeStartObject();
+			
+			jgen.writeObjectFieldStart("position");
+			jgen.writeNumberField("x", value.getX());
+			jgen.writeNumberField("y", value.getY());
+			jgen.writeEndObject();
+			jgen.writeObjectFieldStart("scale");
+			jgen.writeNumberField("x", value.getScaleX());
+			jgen.writeNumberField("y", value.getScaleY());
+			jgen.writeEndObject();
+			
+			jgen.writeEndObject();
+		}
+		
+		@Override
+	    public void register(SimpleModule module) {
+	        module.addSerializer(Shape.class, this);
+	    }	
+	}
+	
+	/**
+	 * Parent class of AbstractShapeGISMap, Shape3DObject, ShapeEmbeddedObjectPresentation, ShapeGroup, 
+	 * 					ShapeImage, ShapeLine, ShapeLineFill, ShapeText
+	 */
+	public static class Shape3DSerializer extends MyStdSerializer<Shape3D> {
+		
+		@Override
+	    public void serialize(
+	    		Shape3D value, JsonGenerator jgen, SerializerProvider provider) 
+	      throws IOException, JsonProcessingException {
+			jgen.writeStartObject();
+			
+			jgen.writeObjectFieldStart("position");
+			jgen.writeNumberField("x", value.getX());
+			jgen.writeNumberField("y", value.getY());
+			jgen.writeNumberField("z", value.getZ());
+			jgen.writeNumberField("rotation", value.getRotation());
+			jgen.writeEndObject();
+			jgen.writeObjectFieldStart("scale");
+			jgen.writeNumberField("x", value.getScaleX());
+			jgen.writeNumberField("y", value.getScaleY());
+			jgen.writeNumberField("z", value.getScaleZ());
+			jgen.writeEndObject();
+			
+			jgen.writeEndObject();
+		}
+		
+		@Override
+	    public void register(SimpleModule module) {
+	        module.addSerializer(Shape3D.class, this);
+	    }	
+	}
+	
+	/**
+	 * Parent class of database tables
+	 */
+	public static class TableSerializer extends MyStdSerializer<RelationalPathBase> {
+		
+		@Override
+	    public void serialize(
+	    		RelationalPathBase value, JsonGenerator jgen, SerializerProvider provider) 
+	      throws IOException, JsonProcessingException {
+			
+			
+			// Get column names/types and constraints for the specified table
+	        String tableName = value.getTableName();
+			List<Map<String, Object>> columns = new ArrayList<>();
+	        List<Map<String, Object>> primaryKeys = new ArrayList<>();
+	        List<Map<String, Object>> foreignKeys = new ArrayList<>();
+
+	        // get column info
+	        for (Object colObj : value.getColumns()) {
+	        	Path<?> col = (Path<?>)colObj;
+	        	columns.add(
+	        		new LinkedHashMap<>(
+	        			Map.of("column_name", col.getMetadata().getName(), 
+	        					"column_type", col.getType().getName())
+	        		)
+	        	);
+	        }
+
+	        // get primary key info
+	        PrimaryKey<?> primaryKey = value.getPrimaryKey();
+	        if (primaryKey != null) {
+	            for (Expression<?> expression : primaryKey.getLocalColumns()) {
+	                primaryKeys.add(
+	                	new LinkedHashMap<>(
+	                		Map.of("column_name", ((Path<?>) expression).getMetadata().getName())
+	                	)
+	                );
+	            }
+	        }
+	        
+	        // get foreign key info
+	        for (Object foreignKeyObj : value.getForeignKeys()) {
+	        	ForeignKey<?> foreignKey = (ForeignKey<?>) foreignKeyObj;
+	            Map<String, Object> foreignKeyInfo = new HashMap<>();
+	            List<String> foreignKeyColumns = new ArrayList<>();
+	            List<String> referencedColumns = new ArrayList<>();
+
+	            for (Expression<?> localColumn : foreignKey.getLocalColumns()) {
+	                foreignKeyColumns.add(((Path<?>) localColumn).getMetadata().getName());
+	            }
+
+	            for (String referencedColumn : foreignKey.getForeignColumns()) {
+	                referencedColumns.add(referencedColumn);
+	            }
+
+	            foreignKeyInfo.put("column_names", foreignKeyColumns);
+	            foreignKeyInfo.put("referenced_column_names", referencedColumns);
+	            //foreignKeyInfo.put("referenced_table_name", foreignKey.getForeignTable().getTableName());
+	            foreignKeys.add(foreignKeyInfo);
+	        }
+	        
+	        // get data
+	        
+			
+	        jgen.writeStartObject();
+	        jgen.writeStringField("table_name", tableName);
+	        jgen.writeObjectField("columns", columns);
+	        jgen.writeObjectField("constraints", new LinkedHashMap<String, Object>(Map.of("primary_keys", primaryKeys, "foreign_keys", foreignKeys)));
+			jgen.writeEndObject();
+		}
+		
+		@Override
+	    public void register(SimpleModule module) {
+	        module.addSerializer(RelationalPathBase.class, this);
+	    }	
+	}
+	
+	public static class DatabaseConnectionSerializer extends MyStdSerializer<Connection> {
+
+		@Override
+	    public void serialize(Connection value, JsonGenerator jgen, SerializerProvider provider) throws IOException, JsonProcessingException {
+			try {
+				jgen.writeStartArray();
+				
+				java.sql.DatabaseMetaData metadata = value.getMetaData();
+				java.sql.ResultSet tables = metadata.getTables(null, null, null, new String[] {"TABLE"});
+				
+				while (tables.next()) {
+					// lookup this table's name
+					String tableName = tables.getString("TABLE_NAME");
+					
+					// build columns info
+					List<Map<String, Object>> columns = new ArrayList<>();
+				    java.sql.ResultSet columnsResultSet = metadata.getColumns(null, null, tableName, null);
+				    while (columnsResultSet.next()) {
+				        Map<String, Object> columnInfo = new LinkedHashMap<>();
+				        columnInfo.put("column_name", columnsResultSet.getString("COLUMN_NAME"));
+				        columnInfo.put("column_type", columnsResultSet.getString("TYPE_NAME"));
+				        columns.add(columnInfo);
+				    }
+				    
+				    // build constraints info
+				    Map<String, List<Map<String, Object>>> constraints = Map.of("primary_keys", new ArrayList<>(), "foreign_keys", new ArrayList<>());
+				    java.sql.ResultSet primaryKeysResultSet = metadata.getPrimaryKeys(null, null, tableName);
+				    while (primaryKeysResultSet.next()) {
+				        Map<String, Object> primaryKeyInfo = new LinkedHashMap<>();
+				        primaryKeyInfo.put("column_name", primaryKeysResultSet.getString("COLUMN_NAME"));
+				        constraints.get("primary_keys").add(primaryKeyInfo);
+				    }
+				    java.sql.ResultSet foreignKeysResultSet = metadata.getImportedKeys(null, null, tableName);
+				    while (foreignKeysResultSet.next()) {
+				        Map<String, Object> foreignKeyInfo = new LinkedHashMap<>();
+				        foreignKeyInfo.put("column_name", foreignKeysResultSet.getString("FKCOLUMN_NAME"));
+				        foreignKeyInfo.put("referenced_table_name", foreignKeysResultSet.getString("PKTABLE_NAME"));
+				        foreignKeyInfo.put("referenced_column_name", foreignKeysResultSet.getString("PKCOLUMN_NAME"));
+				        constraints.get("foreign_keys").add(foreignKeyInfo);
+				    }
+				    
+				    // build data info
+				    List<List<Object>> data = new ArrayList<>();
+				    java.sql.Statement statement = value.createStatement();
+				    java.sql.ResultSet resultSet = statement.executeQuery("SELECT * FROM " + tableName);
+				    java.sql.ResultSetMetaData resultSetMetaData = resultSet.getMetaData();
+				    int columnCount = resultSetMetaData.getColumnCount();
+				    while (resultSet.next()) {
+				        List<Object> row = new ArrayList<>();
+				        for (int i = 1; i <= columnCount; i++) {
+				            row.add(resultSet.getObject(i));
+				        }
+				        data.add(row);
+				    }
+				    
+				    // now add a new entry to the JSON
+				    jgen.writeStartObject();
+				    jgen.writeStringField("table_name", tableName);
+				    jgen.writeObjectField("columns", columns);
+				    jgen.writeObjectField("constraints", constraints);
+				    jgen.writeObjectField("data", data);
+				    jgen.writeEndObject();
+				}
+				
+			    jgen.writeEndArray();
+			    
+			} catch (SQLException e) {
+				jgen.writeNull();
+			}
+		}
+		
+		@Override
+	    public void register(SimpleModule module) {
+	        module.addSerializer(Connection.class, this);
+	    }	
+	}
+	
 }]]></Text>
 		</JavaClass>
 		<!--   =========   Java Class   ========  -->
