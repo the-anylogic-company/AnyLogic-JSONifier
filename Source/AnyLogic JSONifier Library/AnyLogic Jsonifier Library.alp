@@ -771,7 +771,7 @@ jsonFilter.clearNames().includeNames(includedNamesWL);]]></OnChangeCode>
 				<Variable Class="CollectionVariable">
 					<Id>1665787820172</Id>
 					<Name><![CDATA[warnedParameters]]></Name>
-					<X>480</X><Y>490</Y>
+					<X>480</X><Y>520</Y>
 					<Label><X>10</X><Y>0</Y></Label>
 					<PublicFlag>false</PublicFlag>
 					<PresentationFlag>true</PresentationFlag>
@@ -1237,49 +1237,9 @@ try {
 		population._add(myAgent);
 	}
 	
-	// User may have only passed a subset of parameters,
-	//	so try to set them all to defaults first.
-	// Note: cannot always call this because will throw null exception when default values 
-	//	reference function that require non-static usage (e.g., random functions)
-	try {
-		myAgent.setParametersToDefaultValues();
-	} catch (NullPointerException e) {
-		// At least mark as set
-		myAgent.markParametersAreSet();
-	}
-	
-	try {
-		// update the reference node by the pointer
-		JsonNode root = objmapper.readTree(json);
-		root = pointer == null || pointer.isEmpty() ? root : root.at(pointer);
-		// loop thru the fields and find/set the matching parameter name
-		Iterator<String> iter = root.fieldNames();
-		while (iter.hasNext()) {
-			String fieldName = iter.next();
-			// _index is one added by me
-			if (fieldName.equals("_index"))
-				continue;
-			// 'catch-all' method to turn any jsonnode to its intended type
-			//	without having to switch over the class
-			JsonNode fieldNode = root.get(fieldName);
-			Class<?> cls = myAgent.getClass().getField(fieldName).getType();
-			Object value = objmapper.treeToValue(fieldNode, cls);
-			boolean result;
-			try {
-				result = myAgent.setParameter(fieldName, value, false);
-			} catch (ClassCastException e) {
-				// assume value is a string referring to a named object in the root agent
-				Object adjustedValue = getObjectOfName(value.toString(), myAgent.getRootAgent());
-				result = myAgent.setParameter(fieldName, adjustedValue, false);
-			}
-			// alert user, but only once per run
-			if (!result && !warnedParameters.contains(fieldName)) {
-				traceln("ONE-TIME WARNING: Parameter '%s' not found! Options: %s", fieldName, Arrays.toString(myAgent.getParameterNames()));
-				warnedParameters.add(fieldName);
-			}
-		}
-	} catch (JsonProcessingException | NoSuchFieldException e) {
-		e.printStackTrace();
+	Exception exception = setupAgentParameters(myAgent, json, pointer);
+	if (exception != null) {
+		throw exception;
 	}
 	
 	// Create and start if "living" agent
@@ -1290,7 +1250,7 @@ try {
 	}
 	
 	return myAgent;
-} catch (InvocationTargetException | InstantiationException | NoSuchMethodException | IllegalAccessException e) {
+} catch (Exception e) {
 	e.printStackTrace();
 }
 return null;]]></Body>
@@ -1765,57 +1725,17 @@ try {
 	T myAgent = clazz
 			.getDeclaredConstructor()
 			.newInstance();
-	
-	// User may have only passed a subset of parameters,
-	//	so try to set them all to defaults first.
-	// Note: cannot always call this because will throw null exception when default values 
-	//	reference function that require non-static usage (e.g., random functions)
-	try {
-		myAgent.setParametersToDefaultValues();
-	} catch (NullPointerException e) {
-		// At least mark as set
-		myAgent.markParametersAreSet();
-	}
-	
-	try {
-		// update the reference node by the pointer
-		JsonNode root = objmapper.readTree(json);
-		root = pointer == null || pointer.isEmpty() ? root : root.at(pointer);
-		// loop thru the fields and find/set the matching parameter name
-		Iterator<String> iter = root.fieldNames();
-		while (iter.hasNext()) {
-			String fieldName = iter.next();
-			// _index is one added by me
-			if (fieldName.equals("_index"))
-				continue;
-			// 'catch-all' method to turn any jsonnode to its intended type
-			//	without having to switch over the class
-			JsonNode fieldNode = root.get(fieldName);
-			Class<?> cls = myAgent.getClass().getField(fieldName).getType();
-			Object value = objmapper.treeToValue(fieldNode, cls);
-			boolean result;
-			try {
-				result = myAgent.setParameter(fieldName, value, false);
-			} catch (ClassCastException e) {
-				// assume value is a string referring to a named object in the root agent
-				Object adjustedValue = getObjectOfName(value.toString(), myAgent.getRootAgent());
-				result = myAgent.setParameter(fieldName, adjustedValue, false);
-			}
-			// alert user, but only once per run
-			if (!result && !warnedParameters.contains(fieldName)) {
-				traceln("ONE-TIME WARNING: Parameter '%s' not found! Options: %s", fieldName, Arrays.toString(myAgent.getParameterNames()));
-				warnedParameters.add(fieldName);
-			}
-		}
-	} catch (JsonProcessingException | NoSuchFieldException e) {
-		e.printStackTrace();
+			
+	Exception exception = setupAgentParameters(myAgent, json, pointer);
+	if (exception != null) {
+		throw exception;
 	}
 
 	// fully initialize the agent / "awaken" it
 	myAgent.createAndStart(anyAgent);
 	
 	return myAgent;
-} catch (InvocationTargetException | InstantiationException | NoSuchMethodException | IllegalAccessException e) {
+} catch (Exception e) {
 	e.printStackTrace();
 }
 return null;]]></Body>
@@ -1918,6 +1838,81 @@ Example 2: {@code fromPopulationJson("person_list.json", Person.class, peoplePop
 						<Type><![CDATA[AgentArrayList]]></Type>
 					</Parameter>
 					<Body><![CDATA[ALJsonifier.fromPopulationJson(json, null, agent_clazz, population);]]></Body>
+				</Function>
+				<Function AccessType="default" StaticFunction="false">
+					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+					<ReturnType><![CDATA[Exception]]></ReturnType>
+					<Id>1684181406462</Id>
+					<Name><![CDATA[setupAgentParameters]]></Name>
+					<Description><![CDATA[Sets up the given agent with the information in the given JSON at the optionally given pointer (may be null).
+Returns an exception if any problems are encountered (handled in the calls where this is used).]]></Description>
+					<CustomModifierCode><![CDATA[private static <T extends Agent>]]></CustomModifierCode>                 	
+					<X>480</X><Y>490</Y>
+					<Label><X>10</X><Y>0</Y></Label>
+					<PublicFlag>false</PublicFlag>
+					<PresentationFlag>true</PresentationFlag>
+					<ShowLabel>true</ShowLabel>
+					<Parameter>
+						<Name><![CDATA[myAgent]]></Name>
+						<Type><![CDATA[T]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[json]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Parameter>
+						<Name><![CDATA[pointer]]></Name>
+						<Type><![CDATA[String]]></Type>
+					</Parameter>
+					<Body><![CDATA[// User may have only passed a subset of parameters,
+//	so try to set them all to defaults first.
+// Note: cannot always call this because will throw null exception when default values 
+//	reference function that require non-static usage (e.g., random functions)
+try {
+	myAgent.setParametersToDefaultValues();
+} catch (NullPointerException e) {
+	// At least mark as set
+	myAgent.markParametersAreSet();
+}
+
+Exception exception = null;
+
+try {
+	// update the reference node by the pointer
+	JsonNode jsonNode = objmapper.readTree(json);
+	if (pointer != null && !pointer.isEmpty() )
+		jsonNode = jsonNode.at(pointer);
+	
+	// loop thru the fields and find/set the matching parameter name
+	Iterator<String> iter = jsonNode.fieldNames();
+	while (iter.hasNext()) {
+		String fieldName = iter.next();
+		// _index is one added by me
+		if (fieldName.equals("_index"))
+			continue;
+		// 'catch-all' method to turn any jsonnode to its intended type
+		//	without having to switch over the class
+		JsonNode fieldNode = jsonNode.get(fieldName);
+		Class<?> cls = myAgent.getClass().getField(fieldName).getType();
+		Object value = objmapper.treeToValue(fieldNode, cls);
+		boolean result;
+		try {
+			result = myAgent.setParameter(fieldName, value, false);
+		} catch (ClassCastException e) {
+			// assume value is a string referring to a named object in the jsonNode agent
+			Object adjustedValue = getObjectOfName(value.toString(), myAgent.getRootAgent());
+			result = myAgent.setParameter(fieldName, adjustedValue, false);
+		}
+		// alert user, but only once per run
+		if (!result && !warnedParameters.contains(fieldName)) {
+			traceln("ONE-TIME WARNING: Parameter '%s' not found! Options: %s", fieldName, Arrays.toString(myAgent.getParameterNames()));
+			warnedParameters.add(fieldName);
+		}
+	}
+} catch (NoSuchFieldException | JsonProcessingException e) {
+	exception = e;
+}
+return exception;]]></Body>
 				</Function>
 			</Functions>
 			<AgentLinks>
