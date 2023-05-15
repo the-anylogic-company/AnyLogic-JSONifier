@@ -1621,6 +1621,20 @@ for (Class<?> declaredClass : Serializers.class.getDeclaredClasses()) {
 		}
     }
 }
+
+// Loop thru all the declared deserializers (except the generic base class), registering all with the module.
+for (Class<?> declaredClass : Deserializers.class.getDeclaredClasses()) {
+    if (!declaredClass.getSimpleName().equals("MyStdDeserializer")) {
+    	try {
+        	// Create an instance of the class and have it register itself
+        	((Deserializers.MyStdDeserializer<?>) declaredClass.getDeclaredConstructor().newInstance()).register(module);
+		} catch (Exception e) {
+			traceln("[ERROR] Failed to register the deserializer '%s'", declaredClass.getName());
+			e.printStackTrace();
+		}
+    }
+}
+
 mapper.registerModule(module);
 return mapper;]]></Body>
 				</Function>
@@ -3491,6 +3505,135 @@ public interface PortSuppressionMixIn extends SharedSuppressionMixIn
 	
 	@JsonIgnore
 	public List getDownLinks();
+}]]></Text>
+		</JavaClass>
+		<!--   =========   Java Class   ========  -->
+		<JavaClass>
+			<Id>1684173946558</Id>
+			<Name><![CDATA[Deserializers]]></Name>
+			<Text><![CDATA[import java.io.IOException;
+import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+
+/**
+ * Container class for all deserializers.
+ * Technical notes: - Contains one base class (MyStdDeserializer) intended to have the proper constructors and initial methods.
+ * 					- All other classes extend this for each class it wants to deserialize for.
+ * 					- Jackson will use whatever class matches the lowest level class, 
+ * 						enabling simple parent class serializers and more useful/specific child class serializers.
+ */
+public class Deserializers {
+
+	public static class MyStdDeserializer<T> extends StdDeserializer<T> {
+		public MyStdDeserializer() {
+			this(null);
+		}
+		
+		public MyStdDeserializer(Class<T> t) {
+			super(t);
+		}
+		
+		@Override
+		public T deserialize(JsonParser jp, DeserializationContext ctxt)  
+				throws IOException, JsonProcessingException {
+			throw new IOException("Need to be called from a child class.");
+		}
+		
+		public void register(SimpleModule module) {
+	        module.addDeserializer((Class<T>) handledType(), this);
+	    }
+	}
+	
+	public static class PointDeserializer extends MyStdDeserializer<Point> {
+
+		@Override
+		public Point deserialize(JsonParser jp, DeserializationContext ctxt)  
+				throws IOException, JsonProcessingException {
+			JsonNode node = jp.getCodec().readTree(jp);
+			Point pt;
+			if (node.isArray()) {
+		        // Handle JSON array, intended to be size 2 or 3
+				if (node.size() < 2)
+					throw new IOException("Array must be at least 2-length.");
+		        double x = node.get(0).asDouble();
+		        double y = node.get(1).asDouble();
+		        double z = node.size() > 2 ? node.get(2).asDouble() : 0;
+		        pt = new Point(x, y, z);
+		    } else {
+		        // Handle JSON object, intended to have at least 'x' and 'y' keys and possibly 'z'
+		    	if (!node.has("x") || !node.has("y"))
+		    		throw new IOException("Object must have at least keys 'x' and 'y'");
+		    	double x = node.get("x").asDouble();
+		    	double y = node.get("y").asDouble();
+		    	double z = node.has("z") ? node.get("z").asDouble() : 0;
+		        pt = new Point(x, y, z);
+		    }
+			return pt;
+		}
+		
+		public void register(SimpleModule module) {
+	        module.addDeserializer(Point.class, this);
+	    }
+	}
+	
+	public static class PositionDeserializer extends MyStdDeserializer<Position> {
+
+		@Override
+		public Position deserialize(JsonParser jp, DeserializationContext ctxt)  
+				throws IOException, JsonProcessingException {
+			JsonNode node = jp.getCodec().readTree(jp);
+			Position pos;
+			if (node.isArray()) {
+		        // Handle JSON array, intended to be size 2 - 5
+				// 2 = x, y
+				// 3 = x, y, r
+				// 4 = x, y, z, r
+				// 5 = x, y, z, r, vr
+				final int size = node.size();
+				if (size < 2 || size > 5)
+					throw new IOException("Array must be a length between 2 and 5.");
+				double x, y, z, r, vr;
+				x = node.get(0).asDouble();
+				y = node.get(1).asDouble();
+				if (size == 3) {
+					z = 0;
+					r = node.get(2).asDouble();
+					vr = 0;
+				} else {
+					z = node.get(2).asDouble();
+					r = node.get(3).asDouble();
+					vr = size == 5 ? node.get(4).asDouble() : 0;
+				}
+		        pos = new Position(x, y, z, r, vr);
+		    } else {
+		        // Handle JSON object, expecting at least 'x' and 'y' keys, possibly 'z', 'rotation', and ('vertical_rotation' OR 'verticalRotation')
+		    	if (!node.has("x") || !node.has("y"))
+		    		throw new IOException("Object must have at least keys 'x' and 'y'");
+		    	double 	x = node.get("x").asDouble(),
+		    			y = node.get("y").asDouble(),
+		    			z = node.has("z") ? node.get("z").asDouble() : 0,
+		    			r = node.has("rotation") ? node.get("rotation").asDouble() : 0,
+		    			vr = node.has("vertical_rotation") 
+		    				? node.get("vertical_rotation").asDouble() 
+		    				: node.has("verticalRotation") 
+		    					? node.get("verticalRotation").asDouble() 
+		    					: 0;
+		    	pos = new Position(x, y, z, r, vr);
+		    }
+			return pos;
+		}
+		
+		public void register(SimpleModule module) {
+	        module.addDeserializer(Position.class, this);
+	    }
+	}
+	
+	
 }]]></Text>
 		</JavaClass>
 	</JavaClasses>
