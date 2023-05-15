@@ -3555,25 +3555,30 @@ public class Deserializers {
 		public Point deserialize(JsonParser jp, DeserializationContext ctxt)  
 				throws IOException, JsonProcessingException {
 			JsonNode node = jp.getCodec().readTree(jp);
-			Point pt;
+			double x, y, z;
 			if (node.isArray()) {
 		        // Handle JSON array, intended to be size 2 or 3
 				if (node.size() < 2)
 					throw new IOException("Array must be at least 2-length.");
-		        double x = node.get(0).asDouble();
-		        double y = node.get(1).asDouble();
-		        double z = node.size() > 2 ? node.get(2).asDouble() : 0;
-		        pt = new Point(x, y, z);
+		        x = node.get(0).asDouble();
+		        y = node.get(1).asDouble();
+		        z = node.size() > 2 ? node.get(2).asDouble() : 0;
+		        
 		    } else {
-		        // Handle JSON object, intended to have at least 'x' and 'y' keys and possibly 'z'
-		    	if (!node.has("x") || !node.has("y"))
-		    		throw new IOException("Object must have at least keys 'x' and 'y'");
-		    	double x = node.get("x").asDouble();
-		    	double y = node.get("y").asDouble();
-		    	double z = node.has("z") ? node.get("z").asDouble() : 0;
-		        pt = new Point(x, y, z);
+		    	// Handle JSON object, intended to have at least 'x' and 'y' keys (or 'lat' and 'lon') and possibly 'z'
+		    	if (node.has("x") && node.has("y")) {
+		    		x = node.get("x").asDouble();
+		    		y = node.get("y").asDouble();
+		    		z = node.has("z") ? node.get("z").asDouble() : 0;
+		    	} else if (node.has("lat") && node.has("lon")) {
+		    		x = node.get("lat").asDouble();
+		    		y = node.get("lon").asDouble();
+		    		z = 0d;
+		    	} else {
+		    		throw new IOException("Object must have at least keys 'x' and 'y' or 'lat' and 'lon'");
+		    	}
 		    }
-			return pt;
+			return new Point(x, y, z);
 		}
 		
 		public void register(SimpleModule module) {
@@ -3587,7 +3592,7 @@ public class Deserializers {
 		public Position deserialize(JsonParser jp, DeserializationContext ctxt)  
 				throws IOException, JsonProcessingException {
 			JsonNode node = jp.getCodec().readTree(jp);
-			Position pos;
+			double x, y, z, r, vr;
 			if (node.isArray()) {
 		        // Handle JSON array, intended to be size 2 - 5
 				// 2 = x, y
@@ -3597,35 +3602,39 @@ public class Deserializers {
 				final int size = node.size();
 				if (size < 2 || size > 5)
 					throw new IOException("Array must be a length between 2 and 5.");
-				double x, y, z, r, vr;
 				x = node.get(0).asDouble();
 				y = node.get(1).asDouble();
 				if (size == 3) {
-					z = 0;
+					z = 0d;
 					r = node.get(2).asDouble();
-					vr = 0;
+					vr = 0d;
 				} else {
 					z = node.get(2).asDouble();
 					r = node.get(3).asDouble();
-					vr = size == 5 ? node.get(4).asDouble() : 0;
+					vr = size == 5 ? node.get(4).asDouble() : 0d;
 				}
-		        pos = new Position(x, y, z, r, vr);
 		    } else {
-		        // Handle JSON object, expecting at least 'x' and 'y' keys, possibly 'z', 'rotation', and ('vertical_rotation' OR 'verticalRotation')
+		        // Handle JSON object, expecting at least 'x' and 'y' keys (or 'lat' and 'lon'), possibly 'z', 'rotation', and ('vertical_rotation' OR 'verticalRotation')
 		    	if (!node.has("x") || !node.has("y"))
 		    		throw new IOException("Object must have at least keys 'x' and 'y'");
-		    	double 	x = node.get("x").asDouble(),
-		    			y = node.get("y").asDouble(),
-		    			z = node.has("z") ? node.get("z").asDouble() : 0,
-		    			r = node.has("rotation") ? node.get("rotation").asDouble() : 0,
-		    			vr = node.has("vertical_rotation") 
-		    				? node.get("vertical_rotation").asDouble() 
-		    				: node.has("verticalRotation") 
-		    					? node.get("verticalRotation").asDouble() 
-		    					: 0;
-		    	pos = new Position(x, y, z, r, vr);
+		    	if (node.has("x") && node.has("y")) {
+		    		x = node.get("x").asDouble();
+		    		y = node.get("y").asDouble();
+		    	} else if (node.has("lat") && node.has("lon")) {
+		    		x = node.get("lat").asDouble();
+		    		y = node.get("lon").asDouble();
+		    	} else {
+		    		throw new IOException("Object must have at least keys 'x' and 'y' or 'lat' and 'lon'");
+		    	}
+    			z = node.has("z") ? node.get("z").asDouble() : 0d;
+    			r = node.has("rotation") ? node.get("rotation").asDouble() : 0d;
+    			vr = node.has("vertical_rotation") 
+    				? node.get("vertical_rotation").asDouble() 
+    				: node.has("verticalRotation") 
+    					? node.get("verticalRotation").asDouble() 
+    					: 0d;
 		    }
-			return pos;
+			return new Position(x, y, z, r, vr);
 		}
 		
 		public void register(SimpleModule module) {
