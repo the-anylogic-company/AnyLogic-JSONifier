@@ -7,7 +7,7 @@
 <AnyLogicWorkspace WorkspaceVersion="1.9" AnyLogicVersion="8.8.3.202304281216" AlpVersion="8.7.7">
 <Model>
 	<Id>1665787765893</Id>
-	<Name><![CDATA[AnyLogic Jsonifier Library]]></Name>
+	<Name><![CDATA[JSONifier Library]]></Name>
 	<Description><![CDATA[A simple library for enabling AnyLogic objects to be JSON serializable. 
 After creating an instance of it, use the provided "toJson" and "fromJson" functions.
 It also includes a filter for some customization into what is included when calling "toJson".]]></Description>
