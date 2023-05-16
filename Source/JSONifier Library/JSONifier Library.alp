@@ -18,7 +18,7 @@ It also includes a filter for some customization into what is included when call
 		<!--   =========   Active Object Class   ========  -->
 		<ActiveObjectClass>
 			<Id>1665787765899</Id>
-			<Name><![CDATA[ALJsonifier]]></Name>
+			<Name><![CDATA[Jsonifier]]></Name>
 			<AdditionalClassCode><![CDATA[{
 // initialize the filter here to allow for functionality when this obj is created without a constructor / as a POJO;
 // this will get overridden if being created as an agent.
