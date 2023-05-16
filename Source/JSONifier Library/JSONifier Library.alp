@@ -32,7 +32,7 @@ root = getRootAgent();
 * Initialize the class when called within an AL scope (e.g., as a variable object).
 * @param anyAgent An agent that is already registered with the AL Engine; can be the Java keyword 'this' if calling this constructor from an agent.
 */
-public ALJsonifier(Agent anyAgent) {
+public Jsonifier(Agent anyAgent) {
 	// TODO not sure if this is needed (check what functionality is lost from just using the empty constructor).
 	this.createAndStart(anyAgent);
 }
@@ -1423,7 +1423,7 @@ Example 2: {@code Person p = fromAgentJson("single_agent.json", Person.class);}
 						<Name><![CDATA[clazz]]></Name>
 						<Type><![CDATA[Class<T>]]></Type>
 					</Parameter>
-					<Body><![CDATA[return ALJsonifier.fromAgentJson(json, clazz, getRootAgent());]]></Body>
+					<Body><![CDATA[return Jsonifier.fromAgentJson(json, clazz, getRootAgent());]]></Body>
 				</Function>
 				<Function AccessType="public" StaticFunction="true">
 					<ReturnModificator>VOID</ReturnModificator>
@@ -1775,7 +1775,7 @@ Example 2: {@code fromAgentJson("single_agent.json", Person.class, peoplePop);}
 						<Name><![CDATA[population]]></Name>
 						<Type><![CDATA[AgentArrayList]]></Type>
 					</Parameter>
-					<Body><![CDATA[return ALJsonifier.fromAgentJson(json, null, clazz, population);]]></Body>
+					<Body><![CDATA[return Jsonifier.fromAgentJson(json, null, clazz, population);]]></Body>
 				</Function>
 				<Function AccessType="default" StaticFunction="false">
 					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
@@ -1808,7 +1808,7 @@ Example 2: {@code ArrayList<Person> pop = fromPopulationJson("person_list.json",
 						<Name><![CDATA[anyAgent]]></Name>
 						<Type><![CDATA[Agent]]></Type>
 					</Parameter>
-					<Body><![CDATA[return ALJsonifier.fromPopulationJson(json, null, agent_clazz, anyAgent);]]></Body>
+					<Body><![CDATA[return Jsonifier.fromPopulationJson(json, null, agent_clazz, anyAgent);]]></Body>
 				</Function>
 				<Function AccessType="default" StaticFunction="false">
 					<ReturnModificator>VOID</ReturnModificator>
@@ -1840,7 +1840,7 @@ Example 2: {@code fromPopulationJson("person_list.json", Person.class, peoplePop
 						<Name><![CDATA[population]]></Name>
 						<Type><![CDATA[AgentArrayList]]></Type>
 					</Parameter>
-					<Body><![CDATA[ALJsonifier.fromPopulationJson(json, null, agent_clazz, population);]]></Body>
+					<Body><![CDATA[Jsonifier.fromPopulationJson(json, null, agent_clazz, population);]]></Body>
 				</Function>
 				<Function AccessType="default" StaticFunction="false">
 					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
@@ -3185,7 +3185,7 @@ public class Serializers {
 	    		Agent value, JsonGenerator jgen, SerializerProvider provider) 
 	      throws IOException, JsonProcessingException {
 			jgen.writeStartObject();
-			HashMap<String, Object> map = ALJsonifier.agentToMap(value, true, null);
+			HashMap<String, Object> map = Jsonifier.agentToMap(value, true, null);
 			for (String key : new TreeSet<>(map.keySet())) {
 				Object val = map.get(key);
 				jgen.writeObjectField(key, val);
