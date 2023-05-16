@@ -253,6 +253,8 @@ if (!Set.of(_includedNamesWL_DefaultValue_xjal()).equals(JsonFilter.defaultWhite
 				<Variable Class="PlainVariable">
 					<Id>1684182821126</Id>
 					<Name><![CDATA[root]]></Name>
+					<Description><![CDATA[A static reference to the top-level agent.
+It's only assigned when this object is created in an AL environment. It's used to enable code present in JSON to be evaluated (e.g., if a boolean parameter's value is given as <code>randomTrue(0.25)</code>).]]></Description>
 					<X>60</X><Y>130</Y>
 					<Label><X>10</X><Y>0</Y></Label>
 					<PublicFlag>false</PublicFlag>
@@ -857,8 +859,7 @@ Note that agents and agent populations are handled manually due to a recursive i
 					<Description><![CDATA[Converts a JSON string to a POJO (i.e., not an AnyLogic-based class - namely agent or agent population types)
 Example 1: {@code List<Integer> nums = fromJson("[1, 2, 4, 8]", List.class);}
 Example 2: {@code List<Integer> nums = fromJson("input_list.json", List.class);}
-
-@param json A JSON string to be converted **or** a path to a file with this information
+@param json A JSON string to be converted <i>or</i> a path to a file with this information
 @param clazz The class - specifically a standard Java type - to convert the provided string to
 @return The object of the specified type (or `null` if errors were encountered)]]></Description>
 					<CustomModifierCode><![CDATA[public static <T>]]></CustomModifierCode>                 	
@@ -882,7 +883,11 @@ Example 2: {@code List<Integer> nums = fromJson("input_list.json", List.class);}
 					<ReturnType><![CDATA[HashMap<String, Object>]]></ReturnType>
 					<Id>1665787820180</Id>
 					<Name><![CDATA[agentToMap]]></Name>
-					<Description><![CDATA[Extracts all public fields from the given agent and puts it into a varname-to-varvalue map. ]]></Description>
+					<Description><![CDATA[A helper function for serializing agents.
+@param agent The agent to convert
+@param includeNullFields Whether any fields with value `null` are included in the output
+@param seenAgents A set of already parsed agents, used to avoid recursive conversion; can be null
+@return A map of all public fields in the agent to their value]]></Description>
 					<X>210</X><Y>460</Y>
 					<Label><X>10</X><Y>0</Y></Label>
 					<PublicFlag>false</PublicFlag>
@@ -1067,7 +1072,11 @@ return ObjectAgentType.JAVA;]]></Body>
 					<ReturnType><![CDATA[ArrayList<HashMap<String, Object>>]]></ReturnType>
 					<Id>1665787820184</Id>
 					<Name><![CDATA[agentPopToList]]></Name>
-					<Description><![CDATA[Creates a list of Map objects, one for each converted agent in the population]]></Description>
+					<Description><![CDATA[A helper function for serializing agent populations
+@param agentPop The list of agents 
+@param includeNullFields Whether any fields with value `null` are included in the output
+@param seenAgents A set of already parsed agents, used to avoid recursive conversion; can be null
+@return A list of Map objects, one for each converted agent in the population]]></Description>
 					<X>210</X><Y>440</Y>
 					<Label><X>10</X><Y>0</Y></Label>
 					<PublicFlag>false</PublicFlag>
@@ -1145,7 +1154,6 @@ return output;]]></Body>
 					<Description><![CDATA[A function specifically for converting the given JSON (an array of objects mapping parameter names to value) to an arraylist of agents.
 Example 1: {@code ArrayList<Person> pop = fromPopulationJson("{\"options\": [{\"age\": 21, \"name\": \"Paul\"}, {\"age\": 30, \"name\": \"Tyler\"}]}", "/options", Person.class, this);}
 Example 2: {@code ArrayList<Person> pop = fromPopulationJson("person_data.json", "/options", Person.class, this);}
-
 @param json A JSON string **or** a path to a file with this information
 @param pointer A JSON pointer expression to identify the part of the string to convert; if null or empty, uses the json String directly
 @param agent_clazz The class of the AL agent type
@@ -1210,7 +1218,6 @@ return null;]]></Body>
 The agent will be added to the specified population.
 Example 1: {@code fromAgentJson("{\"options\": [{\"age\": 21, \"name\": \"Paul\"}, {\"age\": 30, \"name\": \"Tyler\"}]}", "/options/1", Person.class, peoplePop);}
 Example 2: {@code fromAgentJson("person_data.json", "/options/1", Person.class, peoplePop);}
-
 @param json A JSON string to be converted to an AL agent **or** a path to a file with this information
 @param pointer A JSON pointer expression to identify the part of the string to convert; if null or empty, uses the json String directly
 @param clazz The class of the AL agent type to convert the provided string to
@@ -1284,7 +1291,6 @@ return null;]]></Body>
 					<Description><![CDATA[Converts a list of agents from JSON (specifically an array of objects mapping parameter names to value) and adds it to an existing population.
 Example 1: {@code fromPopulationJson("{\"options\": [{\"age\": 21, \"name\": \"Paul\"}, {\"age\": 30, \"name\": \"Tyler\"}]}", "/options", Person.class, peoplePop);}
 Example 2: {@code fromPopulationJson("person_data.json", "/options", Person.class, peoplePop);}
-
 @param json A valid JSON array **or** a path to a file with this information
 @param pointer A JSON pointer expression to identify the part of the string to convert; if null or empty, uses the json String directly
 @param agent_clazz The Java class for the agent type to convert to
@@ -1341,7 +1347,6 @@ try {
 					<Description><![CDATA[Converts a JSON string of parameter mapping to an active/initialized agent.
 Example 1: {@code Person p = fromAgentJson("{\"age\": 30, \"name\": \"Tyler\"}", Person.class, this);}
 Example 2: {@code Person p = fromAgentJson("single_agent.json", Person.class, this);}
-
 @param json A JSON string to be converted to an AL agent **or** a path to a file with this information
 @param clazz The class of the AL agent type to convert the provided string to
 @param anyAgent Literally any other active agent in your model; used to properly start the agent (you can use `this` to refer to the active agent you're calling it from).
@@ -1364,15 +1369,18 @@ Example 2: {@code Person p = fromAgentJson("single_agent.json", Person.class, th
 						<Name><![CDATA[anyAgent]]></Name>
 						<Type><![CDATA[Agent]]></Type>
 					</Parameter>
-					<Body><![CDATA[return ALJsonifier.fromAgentJson(json, null, clazz, anyAgent);]]></Body>
+					<Body><![CDATA[return Jsonifier.fromAgentJson(json, null, clazz, anyAgent);]]></Body>
 				</Function>
 				<Function AccessType="default" StaticFunction="true">
 					<ReturnModificator>RETURNS_VALUE</ReturnModificator>
 					<ReturnType><![CDATA[Object]]></ReturnType>
 					<Id>1673381927099</Id>
 					<Name><![CDATA[getObjectOfName]]></Name>
-					<Description><![CDATA[Use reflection to retrieve the named object from inside of the given agent.
-If errors are encountered, they'll be printed out and null will be returned.]]></Description>
+					<Description><![CDATA[A helper function for finding the value of a named field.
+If errors are encountered, they'll be printed out.
+@param name The name of the object desired to be outputted
+@param agent The active, valid agent which has the field
+@return  The object or null if the name could not be found]]></Description>
 					<X>360</X><Y>440</Y>
 					<Label><X>10</X><Y>0</Y></Label>
 					<PublicFlag>false</PublicFlag>
@@ -1402,10 +1410,9 @@ return obj;]]></Body>
 					<Id>1678298911650</Id>
 					<Name><![CDATA[fromAgentJson]]></Name>
 					<Description><![CDATA[Converts a JSON string of parameter mapping to an active agent, initialized from the root level agent.
-This function will only work if called from the AnyLogic editor with the ALJsonifier object created as an agent itself (i.e., not programmatically) or manually initialized by calling its `createAndStart` function.
+This function will only work if called from the AnyLogic editor with the Jsonifier object created as an agent itself (i.e., not programmatically) or manually initialized by calling its `createAndStart` function.
 Example 1: {@code Person p = fromAgentJson("{\"age\": 30, \"name\": \"Tyler\"}", Person.class);}
 Example 2: {@code Person p = fromAgentJson("single_agent.json", Person.class);}
-
 @param json A JSON string to be converted to an AL agent **or** a path to a file with this information
 @param clazz The class of the AL agent type to convert the provided string to
 @return The agent of the specified type (or `null` if errors were encountered)]]></Description>
@@ -1432,7 +1439,9 @@ Example 2: {@code Person p = fromAgentJson("single_agent.json", Person.class);}
 					<Name><![CDATA[writeFile]]></Name>
 					<Description><![CDATA[Write some content to a file.
 If the file already exists, content will be overridden.
-Any errors will be printed to the console.]]></Description>
+Any errors will be printed to the console.
+@param file The path to a file on the local system to write to
+@param content The text to write to the file]]></Description>
 					<X>210</X><Y>400</Y>
 					<Label><X>10</X><Y>0</Y></Label>
 					<PublicFlag>false</PublicFlag>
@@ -1459,9 +1468,10 @@ Any errors will be printed to the console.]]></Description>
 					<ReturnType><![CDATA[String]]></ReturnType>
 					<Id>1678301012847</Id>
 					<Name><![CDATA[readFile]]></Name>
-					<Description><![CDATA[Read and return some content from file.
-If the file is not found, the error will be printed to the console and null will be returned.
-@param file]]></Description>
+					<Description><![CDATA[Read some content from a file.
+Any errors will be printed to the console.
+@param file The path to a file on the local system to read
+@return The file content or null if the file was not found]]></Description>
 					<X>360</X><Y>400</Y>
 					<Label><X>10</X><Y>0</Y></Label>
 					<PublicFlag>false</PublicFlag>
@@ -1492,8 +1502,9 @@ return output;]]></Body>
 					<Id>1678309101105</Id>
 					<Name><![CDATA[fetchJson]]></Name>
 					<Description><![CDATA[Will convert the given input to a JSON string, if it's not already one.
-@param input Text to evaluate
-@return a JSON string]]></Description>
+@param input Text to evaluate; can be a JSON string, local file path, or url
+@return a JSON string
+@throws RuntimeException if the type of input is ambiguous or could not be found]]></Description>
 					<X>360</X><Y>420</Y>
 					<Label><X>10</X><Y>0</Y></Label>
 					<PublicFlag>false</PublicFlag>
@@ -1632,10 +1643,9 @@ return mapper;]]></Body>
 					<Id>1682542721746</Id>
 					<Name><![CDATA[fromJson]]></Name>
 					<Description><![CDATA[Converts a JSON string to a POJO (i.e., not an AnyLogic-based class - namely agent or agent population types)
-Example 1: {@code List<Integer> nums = fromJson("{\"inputs\": {\"num_lists\": [ [0], [1, 2, 4, 8] ]}", "/inputs/num_lists/1", List.class);}
+Example 1: {@code List<Integer> nums = fromJson("{\"inputs\": {\"num_lists\": [ [0], [1, 2, 4, 8] ]}}", "/inputs/num_lists/1", List.class);}
 Example 2: {@code List<Integer> nums = fromJson("input_data.json", "/inputs/num_lists/1", List.class);}
-
-@param json A JSON string to be converted **or** a path to a file with this information
+@param json A JSON string to be converted <i>or</i> a path to a file with this information
 @param pointer A JSON pointer expression to identify the part of the string to convert; if null or empty, uses the json String directly
 @param clazz The class - specifically a standard Java type - to convert the provided string to
 @return The object of the specified type (or `null` if errors were encountered)]]></Description>
@@ -1687,7 +1697,6 @@ return output;]]></Body>
 					<Description><![CDATA[Converts a JSON string of parameter mapping to an active/initialized agent.
 Example 1: {@code Person p = fromAgentJson("{\"options\": [{\"age\": 21, \"name\": \"Paul\"}, {\"age\": 30, \"name\": \"Tyler\"}]}", "/options/1", Person.class, this);}
 Example 2: {@code Person p = fromAgentJson("person_data.json", "/options/1", Person.class, this);}
-
 @param json A JSON string to be converted to an AL agent **or** a path to a file with this information
 @param pointer A JSON pointer expression to identify the part of the string to convert; if null or empty, uses the json String directly
 @param clazz The class of the AL agent type to convert the provided string to
@@ -1752,7 +1761,6 @@ return null;]]></Body>
 The agent will be added to the specified population.
 Example 1: {@code fromAgentJson("{\"age\": 30, \"name\": \"Tyler\"}", Person.class, peoplePop);}
 Example 2: {@code fromAgentJson("single_agent.json", Person.class, peoplePop);}
-
 @param json A JSON string to be converted to an AL agent **or** a path to a file with this information
 @param clazz The class of the AL agent type to convert the provided string to
 @param population The population to add this agent to
@@ -1785,7 +1793,6 @@ Example 2: {@code fromAgentJson("single_agent.json", Person.class, peoplePop);}
 					<Description><![CDATA[A function specifically for converting the given JSON (an array of objects mapping parameter names to value) to an arraylist of agents.
 Example 1: {@code ArrayList<Person> pop = fromPopulationJson("[{\"age\": 21, \"name\": \"Paul\"}, {\"age\": 30, \"name\": \"Tyler\"}]", Person.class, this);}
 Example 2: {@code ArrayList<Person> pop = fromPopulationJson("person_list.json", Person.class, this);}
-
 @param json A JSON string **or** a path to a file with this information
 @param agent_clazz The class of the AL agent type
 @param anyAgent Literally any other active agent in your model; used to properly start the agent (you can use `this` to refer to the active agent you're calling it from).
@@ -1818,7 +1825,6 @@ Example 2: {@code ArrayList<Person> pop = fromPopulationJson("person_list.json",
 					<Description><![CDATA[Converts a list of agents from JSON (specifically an array of objects mapping parameter names to value) and adds it to an existing population.
 Example 1: {@code fromPopulationJson("[{\"age\": 21, \"name\": \"Paul\"}, {\"age\": 30, \"name\": \"Tyler\"}]", Person.class, peoplePop);}
 Example 2: {@code fromPopulationJson("person_list.json", Person.class, peoplePop);}
-
 @param json A valid JSON array **or** a path to a file with this information
 @param agent_clazz The Java class for the agent type to convert to
 @param population The population to add the agents to]]></Description>
@@ -1847,8 +1853,11 @@ Example 2: {@code fromPopulationJson("person_list.json", Person.class, peoplePop
 					<ReturnType><![CDATA[Exception]]></ReturnType>
 					<Id>1684181406462</Id>
 					<Name><![CDATA[setupAgentParameters]]></Name>
-					<Description><![CDATA[Sets up the given agent with the information in the given JSON at the optionally given pointer (may be null).
-Returns an exception if any problems are encountered (handled in the calls where this is used).]]></Description>
+					<Description><![CDATA[A helper function shared by some of the 'from' functions to initialize an agent's parameters from JSON. Makes the change to the agent directly.
+@param myAgent An instance of an agent
+@param json A JSON string which contains a map of parameter names to intended values, somewhere in its content
+@param pointer A JSON pointer expression to identify the part of the string to convert; if null or empty, uses the json String directly
+@return Null if no problems occured, otherwise the encountered exception]]></Description>
 					<CustomModifierCode><![CDATA[private static <T extends Agent>]]></CustomModifierCode>                 	
 					<X>360</X><Y>460</Y>
 					<Label><X>10</X><Y>0</Y></Label>
