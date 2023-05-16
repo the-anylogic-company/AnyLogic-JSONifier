@@ -817,7 +817,7 @@ jsonFilter.clearNames().includeNames(includedNamesWL);]]></OnChangeCode>
 						<ValueElementClass><![CDATA[String]]></ValueElementClass>
 						<CollectionInitializer Class="CodeValue">
 							<Code><![CDATA[Arrays.stream(Serializers.class.getDeclaredClasses())
-        .filter(innerClass -> innerClass != Serializers.MyStdSerializer.class)
+        .filter(innerClass -> !Modifier.isAbstract(innerClass.getModifiers()))
         .map(innerClass -> {
             ParameterizedType parameterizedType = (ParameterizedType) innerClass.getGenericSuperclass();
             return (Class<?>) parameterizedType.getActualTypeArguments()[0];
@@ -1602,35 +1602,16 @@ writeFile(file, output);]]></Body>
 mapper.addMixInAnnotations(Event.class, SharedSuppressionMixIn.class); // TODO change to more generic parent type?
 mapper.addMixInAnnotations(Port.class, PortSuppressionMixIn.class);
 
-SimpleModule module = new SimpleModule();
+Serializers.register(
+	mapper, 
+	Arrays.stream(Serializers.class.getDeclaredClasses()).filter(c -> !Modifier.isAbstract(c.getModifiers())).toArray(Class[]::new) 
+);
 
-// Loop thru all the declared serializers (except the generic base class), registering all with the module.
-for (Class<?> declaredClass : Serializers.class.getDeclaredClasses()) {
-    if (!declaredClass.getSimpleName().equals("MyStdSerializer")) {
-    	try {
-        	// Create an instance of the class and have it register itself
-        	((Serializers.MyStdSerializer<?>) declaredClass.getDeclaredConstructor().newInstance()).register(module);
-		} catch (Exception e) {
-			traceln("[ERROR] Failed to register the serializer '%s'", declaredClass.getName());
-			e.printStackTrace();
-		}
-    }
-}
+Deserializers.register(
+	mapper,
+	Arrays.stream(Deserializers.class.getDeclaredClasses()).filter(c -> !Modifier.isAbstract(c.getModifiers())).toArray(Class[]::new)
+);
 
-// Loop thru all the declared deserializers (except the generic base class), registering all with the module.
-for (Class<?> declaredClass : Deserializers.class.getDeclaredClasses()) {
-    if (!declaredClass.getSimpleName().equals("MyStdDeserializer")) {
-    	try {
-        	// Create an instance of the class and have it register itself
-        	((Deserializers.MyStdDeserializer<?>) declaredClass.getDeclaredConstructor().newInstance()).register(module);
-		} catch (Exception e) {
-			traceln("[ERROR] Failed to register the deserializer '%s'", declaredClass.getName());
-			e.printStackTrace();
-		}
-    }
-}
-
-mapper.registerModule(module);
 return mapper;]]></Body>
 				</Function>
 				<Function AccessType="public" StaticFunction="false">
@@ -2929,6 +2910,7 @@ import com.fasterxml.jackson.databind.ser.std.StdSerializer;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import java.util.stream.IntStream;
@@ -2948,33 +2930,45 @@ import com.querydsl.sql.RelationalPathBase;
 
 /**
  * Container class for all serializers.
- * Technical notes: - Contains one base class (MyStdSerializer) intended to have the proper constructors and initial methods.
+ * Technical notes: - Contains one base class (ACustomSerializer) intended to have the proper constructors and initial methods.
  * 					- All other classes extend this for each class it wants to serialize for.
- * 					- Jackson will use whatever class matches the lowest level class, 
+ * 						they need to implement the empty constructor calling `super(Classname.class)` and the abstract function.
+ * 					- Use this class's `register` function to add the classes to the provided ObjectMapper
+ * 					- Note: Jackson will use whatever class matches the lowest level class, 
  * 						enabling simple parent class serializers and more useful/specific child class serializers.
  */
 public class Serializers {
-	public static class MyStdSerializer<T> extends StdSerializer<T> {
-		public MyStdSerializer() {
+	
+	public static void register(ObjectMapper mapper, Class<?>... serClasses) {
+		SimpleModule module = new SimpleModule();
+		for (Class<?> c : serClasses) {
+			try {
+				ACustomSerializer s = (ACustomSerializer)c.getDeclaredConstructor().newInstance();
+				module.addSerializer(s.handledType(), s);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+		mapper.registerModule(module);
+	}
+	
+	public abstract static class ACustomSerializer<T> extends StdSerializer<T> {
+		public ACustomSerializer() {
 			this(null);
 		}
 		
-		public MyStdSerializer(Class<T> t) {
+		public ACustomSerializer(Class<T> t) {
 			super(t);
 		}
 		
-		@Override
-		public void serialize(T value, JsonGenerator jgen, SerializerProvider provider)  
-				throws IOException, JsonProcessingException {
-			throw new IOException("Need to be called from a child class.");
-		}
-		
-		public void register(SimpleModule module) {
-	        module.addSerializer(handledType(), this);
-	    }
+		public abstract void serialize(T value, JsonGenerator jgen, SerializerProvider provider) throws IOException, JsonProcessingException;
 	}
 	
-	public static class DataSetSerializer extends MyStdSerializer<DataSet> {
+	public static class DataSetSerializer extends ACustomSerializer<DataSet> {
+		
+		public DataSetSerializer() {
+			super(DataSet.class);
+		}
 
 	    @Override
 	    public void serialize(
@@ -2996,14 +2990,14 @@ public class Serializers {
 	        jgen.writeObjectField("plainDataTable", value.getPlainDataTable());
 	        jgen.writeEndObject();
 	    }
-	    
-	    @Override
-	    public void register(SimpleModule module) {
-	        module.addSerializer(DataSet.class, this);
-	    }
 	}
 	
-	public static class Histogram1DSerializer extends MyStdSerializer<HistogramData> {
+	public static class Histogram1DSerializer extends ACustomSerializer<HistogramData> {
+		
+		public Histogram1DSerializer() {
+			super(HistogramData.class);
+		}
+		
 	    @Override
 	    public void serialize(
 	    		HistogramData value, JsonGenerator jgen, SerializerProvider provider) 
@@ -3032,14 +3026,14 @@ public class Serializers {
 	        jgen.writeObjectField("statistics", dtableStats);
 	        jgen.writeEndObject();
 	    }
-	    
-	    @Override
-	    public void register(SimpleModule module) {
-	        module.addSerializer(HistogramData.class, this);
-	    }
 	}
 	
-	public static class Histogram2DSerializer extends MyStdSerializer<Histogram2DData> {
+	public static class Histogram2DSerializer extends ACustomSerializer<Histogram2DData> {
+		
+		public Histogram2DSerializer() {
+			super(Histogram2DData.class);
+		}
+		
 	    @Override
 	    public void serialize(
 	    		Histogram2DData value, JsonGenerator jgen, SerializerProvider provider) 
@@ -3068,14 +3062,14 @@ public class Serializers {
 	        jgen.writeNumberField("yMax", value.getYMax());
 	        jgen.writeEndObject();
 	    }
-	    
-	    @Override
-	    public void register(SimpleModule module) {
-	        module.addSerializer(Histogram2DData.class, this);
-	    }
 	}
 	
-	public static class StatisticsDiscreteSerializer extends MyStdSerializer<StatisticsDiscrete> {
+	public static class StatisticsDiscreteSerializer extends ACustomSerializer<StatisticsDiscrete> {
+		
+		public StatisticsDiscreteSerializer() {
+			super(StatisticsDiscrete.class);
+		}
+		
 	    @Override
 	    public void serialize(
 	    		StatisticsDiscrete value, JsonGenerator jgen, SerializerProvider provider) 
@@ -3089,14 +3083,14 @@ public class Serializers {
 	    		} catch (IOException e) {}});
 	        jgen.writeEndObject();
 	    }
-	    
-	    @Override
-	    public void register(SimpleModule module) {
-	        module.addSerializer(StatisticsDiscrete.class, this);
-	    }
 	}
 	
-	public static class StatisticsContinuousSerializer extends MyStdSerializer<StatisticsContinuous> {
+	public static class StatisticsContinuousSerializer extends ACustomSerializer<StatisticsContinuous> {
+		
+		public StatisticsContinuousSerializer() {
+			super(StatisticsContinuous.class);
+		}
+		
 	    @Override
 	    public void serialize(
 	    		StatisticsContinuous value, JsonGenerator jgen, SerializerProvider provider) 
@@ -3110,18 +3104,18 @@ public class Serializers {
 	    		} catch (IOException e) {}});
 	        jgen.writeEndObject();
 	    }
-	    
-	    @Override
-	    public void register(SimpleModule module) {
-	        module.addSerializer(StatisticsContinuous.class, this);
-	    }
 	}
 	
 	/**
 	 * Parent class of Transitions, Events, and DyanmicEvents.
 	 * Technical note: needed due to recursive issue from `getAgent`
 	 */
-	public static class EventOriginatorSerializer extends MyStdSerializer<EventOriginator> {
+	public static class EventOriginatorSerializer extends ACustomSerializer<EventOriginator> {
+		
+		public EventOriginatorSerializer() {
+			super(EventOriginator.class);
+		}
+		
 	    @Override
 	    public void serialize(
 	    		EventOriginator value, JsonGenerator jgen, SerializerProvider provider) 
@@ -3130,14 +3124,14 @@ public class Serializers {
 	        jgen.writeNumberField("time_remaining", value.getRest());
 	        jgen.writeEndObject();
 	    }
-	    
-	    @Override
-	    public void register(SimpleModule module) {
-	        module.addSerializer(EventOriginator.class, this);
-	    }
 	}
 	
-	public static class StatechartSerializer extends MyStdSerializer<Statechart> {
+	public static class StatechartSerializer extends ACustomSerializer<Statechart> {
+		
+		public StatechartSerializer() {
+			super(Statechart.class);
+		}
+		
 	    @Override
 	    public void serialize(
 	    		Statechart value, JsonGenerator jgen, SerializerProvider provider) 
@@ -3146,14 +3140,14 @@ public class Serializers {
 	        jgen.writeObjectField("active_state", Map.of("full", value.getFullState(), "simple", value.getActiveSimpleState().name()));
 	        jgen.writeEndObject();
 	    }
-	    
-	    @Override
-	    public void register(SimpleModule module) {
-	        module.addSerializer(Statechart.class, this);
-	    }
 	}
 	
-	public static class FlowchartBlockSerializer extends MyStdSerializer<FlowchartBlock> {
+	public static class FlowchartBlockSerializer extends ACustomSerializer<FlowchartBlock> {
+		
+		public FlowchartBlockSerializer() {
+			super(FlowchartBlock.class);
+		}
+		
 		@Override
 	    public void serialize(
 	    		FlowchartBlock value, JsonGenerator jgen, SerializerProvider provider) 
@@ -3178,14 +3172,14 @@ public class Serializers {
 	        );
 	        jgen.writeEndObject();
 	    }
-		
-		@Override
-	    public void register(SimpleModule module) {
-	        module.addSerializer(FlowchartBlock.class, this);
-	    }
 	}
 	
-	public static class AgentSerializer extends MyStdSerializer<Agent> {
+	public static class AgentSerializer extends ACustomSerializer<Agent> {
+		
+		public AgentSerializer() {
+			super(Agent.class);
+		}
+		
 		@Override
 	    public void serialize(
 	    		Agent value, JsonGenerator jgen, SerializerProvider provider) 
@@ -3198,14 +3192,14 @@ public class Serializers {
 			}
 			jgen.writeEndObject();
 		}
-		
-		@Override
-	    public void register(SimpleModule module) {
-	        module.addSerializer(Agent.class, this);
-	    }
 	}
 	
-	public static class AgentListSerializer extends MyStdSerializer<AgentList> {
+	public static class AgentListSerializer extends ACustomSerializer<AgentList> {
+		
+		public AgentListSerializer() {
+			super(AgentList.class);
+		}
+		
 		@Override
 	    public void serialize(
 	    		AgentList value, JsonGenerator jgen, SerializerProvider provider) 
@@ -3216,28 +3210,28 @@ public class Serializers {
 			}
 			jgen.writeEndArray();
 		}
-		
-		@Override
-	    public void register(SimpleModule module) {
-	        module.addSerializer(AgentList.class, this);
-	    }
 	}
 	
-	public static class ViewAreaSerializer extends MyStdSerializer<ViewArea> {
+	public static class ViewAreaSerializer extends ACustomSerializer<ViewArea> {
+		
+		public ViewAreaSerializer() {
+			super(ViewArea.class);
+		}
+		
 		@Override
 	    public void serialize(
 	    		ViewArea value, JsonGenerator jgen, SerializerProvider provider) 
 	      throws IOException, JsonProcessingException {
 			jgen.writeNull();
 		}
-		
-		@Override
-	    public void register(SimpleModule module) {
-	        module.addSerializer(ViewArea.class, this);
-	    }
 	}
 	
-	public static class LinkToAgentsSerializer extends MyStdSerializer<LinkToAgentStandardImpl> {
+	public static class LinkToAgentsSerializer extends ACustomSerializer<LinkToAgentStandardImpl> {
+		
+		public LinkToAgentsSerializer() {
+			super(LinkToAgentStandardImpl.class);
+		}
+		
 		@Override
 	    public void serialize(
 	    		LinkToAgentStandardImpl value, JsonGenerator jgen, SerializerProvider provider) 
@@ -3247,14 +3241,14 @@ public class Serializers {
 			jgen.writeNumberField("connections_count", value.getConnectionsNumber());
 			jgen.writeEndObject();
 		}
-		
-		@Override
-	    public void register(SimpleModule module) {
-	        module.addSerializer(LinkToAgentStandardImpl.class, this);
-	    }
 	}
 	
-	public static class AbstractMarkupSerializer extends MyStdSerializer<AbstractMarkup> {
+	public static class AbstractMarkupSerializer extends ACustomSerializer<AbstractMarkup> {
+		
+		public AbstractMarkupSerializer() {
+			super(AbstractMarkup.class);
+		}
+		
 		@Override
 	    public void serialize(
 	    		AbstractMarkup value, JsonGenerator jgen, SerializerProvider provider) 
@@ -3275,36 +3269,36 @@ public class Serializers {
 			}
 			
 		}
-		
-		@Override
-	    public void register(SimpleModule module) {
-	        module.addSerializer(AbstractMarkup.class, this);
-	    }
 	}
 	
 	/**
 	 * Parent class of all network types ("normal" networks, gis, conveyor, road, rail, level containers).
 	 * Specifically important because these types have `getSpace()` methods that can cause recursive issues.
 	 */
-	public static class AbstractMarkupAggregatorSerializer extends MyStdSerializer<AbstractMarkupAggregator> {
+	public static class AbstractMarkupAggregatorSerializer extends ACustomSerializer<AbstractMarkupAggregator> {
+		
+		public AbstractMarkupAggregatorSerializer() {
+			super(AbstractMarkupAggregator.class);
+		}
+		
 		@Override
 	    public void serialize(
 	    		AbstractMarkupAggregator value, JsonGenerator jgen, SerializerProvider provider) 
 	      throws IOException, JsonProcessingException {
 			jgen.writeNull();
 		}
-		
-		@Override
-	    public void register(SimpleModule module) {
-	        module.addSerializer(AbstractMarkupAggregator.class, this);
-	    }
 	}
 	
 	/**
 	 * Parent class of Shape3D, ShapeCAD, ShapeCanvas, ShapeControl, ShapeEmbeddedObjectIcon, ShapeInspect, 
 	 * 					ShapeModelPrimitives, ShapeScale, ShapeSVG
 	 */
-	public static class ShapeSerializer extends MyStdSerializer<Shape> {
+	public static class ShapeSerializer extends ACustomSerializer<Shape> {
+		
+		public ShapeSerializer() {
+			super(Shape.class);
+		}
+		
 		
 		@Override
 	    public void serialize(
@@ -3323,18 +3317,18 @@ public class Serializers {
 			
 			jgen.writeEndObject();
 		}
-		
-		@Override
-	    public void register(SimpleModule module) {
-	        module.addSerializer(Shape.class, this);
-	    }	
 	}
 	
 	/**
 	 * Parent class of AbstractShapeGISMap, Shape3DObject, ShapeEmbeddedObjectPresentation, ShapeGroup, 
 	 * 					ShapeImage, ShapeLine, ShapeLineFill, ShapeText
 	 */
-	public static class Shape3DSerializer extends MyStdSerializer<Shape3D> {
+	public static class Shape3DSerializer extends ACustomSerializer<Shape3D> {
+		
+		public Shape3DSerializer() {
+			super(Shape3D.class);
+		}
+		
 		
 		@Override
 	    public void serialize(
@@ -3356,17 +3350,17 @@ public class Serializers {
 			
 			jgen.writeEndObject();
 		}
-		
-		@Override
-	    public void register(SimpleModule module) {
-	        module.addSerializer(Shape3D.class, this);
-	    }	
 	}
 	
 	/**
 	 * Parent class of database tables
 	 */
-	public static class TableSerializer extends MyStdSerializer<RelationalPathBase> {
+	public static class TableSerializer extends ACustomSerializer<RelationalPathBase> {
+		
+		public TableSerializer() {
+			super(RelationalPathBase.class);
+		}
+		
 		
 		@Override
 	    public void serialize(
@@ -3433,15 +3427,14 @@ public class Serializers {
 	        jgen.writeObjectField("constraints", new LinkedHashMap<String, Object>(Map.of("primary_keys", primaryKeys, "foreign_keys", foreignKeys)));
 			jgen.writeEndObject();
 		}
-		
-		@Override
-	    public void register(SimpleModule module) {
-	        module.addSerializer(RelationalPathBase.class, this);
-	    }	
 	}
 	
-	public static class DatabaseConnectionSerializer extends MyStdSerializer<Connection> {
-
+	public static class DatabaseConnectionSerializer extends ACustomSerializer<Connection> {
+		
+		public DatabaseConnectionSerializer() {
+			super(Connection.class);
+		}
+		
 		@Override
 	    public void serialize(Connection value, JsonGenerator jgen, SerializerProvider provider) throws IOException, JsonProcessingException {
 			try {
@@ -3510,11 +3503,6 @@ public class Serializers {
 				jgen.writeNull();
 			}
 		}
-		
-		@Override
-	    public void register(SimpleModule module) {
-	        module.addSerializer(Connection.class, this);
-	    }	
 	}
 	
 }]]></Text>
@@ -3582,38 +3570,50 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 
 /**
  * Container class for all deserializers.
- * Technical notes: - Contains one base class (MyStdDeserializer) intended to have the proper constructors and initial methods.
- * 					- All other classes extend this for each class it wants to deserialize for.
- * 					- Jackson will use whatever class matches the lowest level class, 
+ * Technical notes: - Contains one base class (ACustomDeserializer) intended to have the proper constructors and initial methods.
+ * 					- All other classes extend this for each class it wants to deserialize for; 
+ * 						they need to implement the empty constructor calling `super(Classname.class)` and the abstract function.
+ * 					- Use this class's `register` function to add the classes to the provided ObjectMapper
+ * 					- Note: Jackson will use whatever class matches the lowest level class, 
  * 						enabling simple parent class serializers and more useful/specific child class serializers.
  */
 public class Deserializers {
+	
+	public static void register(ObjectMapper mapper, Class<?>... desClasses) {
+		SimpleModule module = new SimpleModule();
+		for (Class<?> c : desClasses) {
+			try {
+				ACustomDeserializer d = (ACustomDeserializer)c.getDeclaredConstructor().newInstance();
+				module.addDeserializer(d.handledType(), d);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+		mapper.registerModule(module);
+	}
 
-	public static class MyStdDeserializer<T> extends StdDeserializer<T> {
-		public MyStdDeserializer() {
+	public abstract static class ACustomDeserializer<T> extends StdDeserializer<T> {
+		public ACustomDeserializer() {
 			this(null);
 		}
 		
-		public MyStdDeserializer(Class<T> t) {
+		public ACustomDeserializer(Class<T> t) {
 			super(t);
 		}
 		
-		@Override
-		public T deserialize(JsonParser jp, DeserializationContext ctxt)  
-				throws IOException, JsonProcessingException {
-			throw new IOException("Need to be called from a child class.");
-		}
-		
-		public void register(SimpleModule module) {
-	        module.addDeserializer((Class<T>) handledType(), this);
-	    }
+		public abstract T deserialize(JsonParser jp, DeserializationContext ctxt) throws IOException, JsonProcessingException;
 	}
 	
-	public static class PointDeserializer extends MyStdDeserializer<Point> {
+	public static class PointDeserializer extends ACustomDeserializer<Point> {
+		
+		public PointDeserializer() {
+			super(Point.class);
+		}
 
 		@Override
 		public Point deserialize(JsonParser jp, DeserializationContext ctxt)  
@@ -3644,13 +3644,13 @@ public class Deserializers {
 		    }
 			return new Point(x, y, z);
 		}
-		
-		public void register(SimpleModule module) {
-	        module.addDeserializer(Point.class, this);
-	    }
 	}
 	
-	public static class PositionDeserializer extends MyStdDeserializer<Position> {
+	public static class PositionDeserializer extends ACustomDeserializer<Position> {
+		
+		public PositionDeserializer() {
+			super(Position.class);
+		}
 
 		@Override
 		public Position deserialize(JsonParser jp, DeserializationContext ctxt)  
@@ -3700,10 +3700,6 @@ public class Deserializers {
 		    }
 			return new Position(x, y, z, r, vr);
 		}
-		
-		public void register(SimpleModule module) {
-	        module.addDeserializer(Position.class, this);
-	    }
 	}
 	
 	
