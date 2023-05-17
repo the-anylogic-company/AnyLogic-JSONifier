@@ -3719,12 +3719,20 @@ public class Deserializers {
 		<!--   =========   Library   ========  -->
 		<Library>
 			<Id>1665789589643</Id>
-			<Name><![CDATA[JSONifierLib]]></Name>
+			<Name><![CDATA[JSONifier Library]]></Name>
 			<Description><![CDATA[A simple library for enabling AnyLogic objects to be JSON serializable. 
 After creating an instance of it, use the provided "toJson" and "fromJson" functions.
 It also includes a filter for some customization into what is included when calling "toJson".]]></Description>
 			<AOCEntry>
 				<ActiveObjectClassId>1665787765899</ActiveObjectClassId>
+				<Icon16ResourceReference>
+					<PackageName><![CDATA[anylogic_jsonifier_library]]></PackageName>
+					<ClassName><![CDATA[jsonifier_16.png]]></ClassName>
+				</Icon16ResourceReference>
+				<Icon32ResourceReference>
+					<PackageName><![CDATA[anylogic_jsonifier_library]]></PackageName>
+					<ClassName><![CDATA[jsonifier_32.png]]></ClassName>
+				</Icon32ResourceReference>
 			</AOCEntry>
 
 			<IconResourceReference>
@@ -3740,6 +3748,10 @@ It also includes a filter for some customization into what is included when call
 	<ModelResources>
 		<Resource>
 			<Path><![CDATA[jsonifier_16.png]]></Path>
+			<ReferencedFromUserCode>false</ReferencedFromUserCode>
+		</Resource>
+		<Resource>
+			<Path><![CDATA[jsonifier_32.png]]></Path>
 			<ReferencedFromUserCode>false</ReferencedFromUserCode>
 		</Resource>
 	</ModelResources>
