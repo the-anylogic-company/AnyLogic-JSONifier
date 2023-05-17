@@ -1,8 +1,14 @@
 # AnyLogic-JSONifier
+
 A simple library for enabling JSON serialization and deserialization for various AnyLogic types, usable both as an add-on library inside AnyLogic (i.e., as an object you drag into your model) or inside any external editor (i.e., programmaticly created).
 
-A customizable filter is available when converting objects to JSON - in a blacklist or whitelist mode - when you want to be able to specify what objects are/are not allowed in the output.
+The serialization features (converting any object to JSON) come with a deeply customizable filter to specify what exactly gets outputted. It can be setup in a "blacklist" or "whitelist" mode with different ways of targeting specific parts of your model.
 
-For when inside AnyLogic contexts, you can convert JSON strings or files to agents or populations, allowing for customized ways to initialize your model with.
+The deserialization features (converting from JSON to an object) not only include conversion to any standard Java types, but also to AnyLogic objects, including agents and populations! This opens up the ability to have customized ways to initialize your model. 
 
-<< TODO function documentation >>
+For more information, see the project's [Wiki](https://github.com/t-wolfeadam/AnyLogic-JSONifier/wiki).
+
+For asking questions, reporting problems, or requesting features, post in this project's [Issues](https://github.com/t-wolfeadam/AnyLogic-JSONifier/issues).
+
+
+
