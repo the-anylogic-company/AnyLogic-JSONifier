@@ -3704,9 +3704,9 @@ public class Deserializers {
 		<Library>
 			<Id>1665789589643</Id>
 			<Name><![CDATA[JSONifier Library]]></Name>
-			<Description><![CDATA[A simple library for enabling AnyLogic objects to be JSON serializable. 
+			<Description><![CDATA[A simple library for enabling AnyLogic objects to be JSON serializable and deserializable.
 After creating an instance of it, use the provided "toJson" and "fromJson" functions.
-It also includes a filter for some customization into what is included when calling "toJson".]]></Description>
+It also includes a filter for some customization into what is included when calling "toJson" on agents/populations.]]></Description>
 			<AOCEntry>
 				<ActiveObjectClassId>1665787765899</ActiveObjectClassId>
 				<Icon16ResourceReference>
@@ -3723,10 +3723,10 @@ It also includes a filter for some customization into what is included when call
 				<PackageName><![CDATA[anylogic_jsonifier_library]]></PackageName>
 				<ClassName><![CDATA[jsonifier_16.png]]></ClassName>
 			</IconResourceReference>
-			<VersionMajor>0</VersionMajor>
-			<VersionMinor>1</VersionMinor>
+			<VersionMajor>1</VersionMajor>
+			<VersionMinor>0</VersionMinor>
 			<VersionBuild>0</VersionBuild>
-			<Provider><![CDATA[]]></Provider>    
+			<Provider><![CDATA[Tyler Wolfe-Adam]]></Provider>    
 		</Library>
 	</Libraries>
 	<ModelResources>
