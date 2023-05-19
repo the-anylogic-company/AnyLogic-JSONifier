@@ -19,6 +19,8 @@ It also includes a filter for some customization into what is included when call
 		<ActiveObjectClass>
 			<Id>1665787765899</Id>
 			<Name><![CDATA[Jsonifier]]></Name>
+			<Description><![CDATA[Add this custom object to your model to gain access to all the functions for serializing and deserializing objects in your model. For serialization of agents and populations (via the `toJson` functions), you can customize the filter, which defines what fields are/are not included, through the properties of the object. 
+Note that the filter is shared by all instances of the Jsonfiier object, so you only need one instance per model.]]></Description>
 			<AdditionalClassCode><![CDATA[{
 // initialize the filter here to allow for functionality when this obj is created without a constructor / as a POJO;
 // this will get overridden if being created as an agent.
