@@ -2832,6 +2832,19 @@ public class JsonFilter {
 	}
 	
 	/**
+	 * Removes all packages, classes, and names from the current filter.
+	 * When in blacklist mode (default), this will allow ALL objects; in whitelist mode, this will prevent ALL objects.
+	 * This is *NOT* reccomended for blacklist mode (without further intervention), as many AnyLogic objects are not configured to be JSON-serializable.
+	 * @return a reference to this object
+	 */
+	public JsonFilter clearAll() {
+		includedPackages.clear();
+		includedClasses.clear();
+		includedNames.clear();
+		return this.update();
+	}
+	
+	/**
 	 * Resets the set of packages, reverting to the default set.
 	 * @return a reference to this object
 	 */
@@ -2877,6 +2890,14 @@ public class JsonFilter {
 				includedNames.add(n);
 		}
 		return this.update();
+	}
+	
+	/**
+	 * Resets the set of packages, classes, and names to the default sets.
+	 * @return a reference to this object
+	 */
+	public JsonFilter resetAll() {
+		return resetPackages().resetClasses().resetNames();
 	}
 	
 	private JsonFilter update() {
