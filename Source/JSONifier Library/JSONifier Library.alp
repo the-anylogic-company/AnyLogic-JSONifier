@@ -4,7 +4,7 @@
 	         AnyLogic Project File 
 *************************************************	         
 -->
-<AnyLogicWorkspace WorkspaceVersion="1.9" AnyLogicVersion="8.8.3.202304281216" AlpVersion="8.7.7">
+<AnyLogicWorkspace WorkspaceVersion="1.9" AnyLogicVersion="8.8.6.202312140435" AlpVersion="8.8.3">
 <Model>
 	<Id>1665787765893</Id>
 	<Name><![CDATA[JSONifier Library]]></Name>
@@ -667,7 +667,7 @@ Calling this function's `set_` function will update the filter. An error will be
 	IStatechartState.class,
 	AbstractLinkToAgent.class,
 	Scale.class,
-	CustomDistribution.class,
+	CustomDistributionAbstract.class,
 	Random.class,
 	Histogram.Appearance.class,
 	Histogram2D.Appearance.class,
@@ -2332,7 +2332,7 @@ public class JsonFilter {
 			IStatechartState.class,
 			AbstractLinkToAgent.class,
 			Scale.class,
-			CustomDistribution.class,
+			CustomDistributionAbstract.class,
 			Random.class,
 			Histogram.Appearance.class,
 			Histogram2D.Appearance.class,
@@ -3778,7 +3778,7 @@ It also includes a filter for some customization into what is included when call
 			</IconResourceReference>
 			<VersionMajor>1</VersionMajor>
 			<VersionMinor>0</VersionMinor>
-			<VersionBuild>0</VersionBuild>
+			<VersionBuild>1</VersionBuild>
 			<Provider><![CDATA[Tyler Wolfe-Adam]]></Provider>    
 		</Library>
 	</Libraries>
@@ -3786,10 +3786,12 @@ It also includes a filter for some customization into what is included when call
 		<Resource>
 			<Path><![CDATA[jsonifier_16.png]]></Path>
 			<ReferencedFromUserCode>false</ReferencedFromUserCode>
+			<Location>FILE_SYSTEM</Location>
 		</Resource>
 		<Resource>
 			<Path><![CDATA[jsonifier_32.png]]></Path>
 			<ReferencedFromUserCode>false</ReferencedFromUserCode>
+			<Location>FILE_SYSTEM</Location>
 		</Resource>
 	</ModelResources>
     <RequiredLibraryReference>
